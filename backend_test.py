@@ -6,7 +6,7 @@ import subprocess
 import time
 
 class PomodoroAPITester:
-    def __init__(self, base_url="https://studycycle-1.preview.emergentagent.com"):
+    def __init__(self, base_url=""):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.session_token = None

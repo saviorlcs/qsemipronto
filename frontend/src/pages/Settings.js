@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { api } from '../lib/api';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react';
 import Header from '../components/Header';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://studycycle-1.preview.emergentagent.com';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 const API = `${BACKEND_URL}/api`;
 
 export default function Settings() {
@@ -26,17 +26,30 @@ export default function Settings() {
     loadData();
   }, []);
 
+
+useEffect(() => {
+  api.get('/auth/me')
+    .then(r => {
+      const u = r.data?.user || {};
+      setNickname(u.nickname || '');
+      setTag(u.tag || '');
+    })
+    .catch(() => {/* deixa vazio mesmo */});
+}, []);
+
+
   const loadData = async () => {
     try {
       const [userRes, settingsRes] = await Promise.all([
-        axios.get(`${API}/auth/me`, { withCredentials: true }),
-        axios.get(`${API}/settings`, { withCredentials: true })
-      ]);
+   api.get('/auth/me'),
+   api.get('/settings'),
+ ]);
       
-      setUser(userRes.data);
-      setSettings(settingsRes.data);
-      setNickname(userRes.data.nickname || '');
-      setTag(userRes.data.tag || '');
+      const u = userRes.data?.user || null;
+      setUser(u);
+      setSettings(settingsRes.data || { study_duration: 50, break_duration: 10 });
+      setNickname(u?.nickname || '');
+      setTag(u?.tag || '');
 
       // Check if can change nickname
       if (userRes.data.last_nickname_change) {
@@ -59,7 +72,7 @@ export default function Settings() {
 
   const handleSaveSettings = async () => {
     try {
-      await axios.post(`${API}/settings`, settings, { withCredentials: true });
+      await api.post('/settings', settings);
       toast.success('Configurações salvas!');
     } catch (error) {
       toast.error('Erro ao salvar configurações');
@@ -68,7 +81,7 @@ export default function Settings() {
 
   const handleChangeNickname = async () => {
     try {
-      await axios.post(`${API}/user/nickname`, { nickname, tag }, { withCredentials: true });
+      await api.post('/user/nickname', { nickname, tag });
       toast.success('Nickname#tag atualizado!');
       loadData();
     } catch (error) {

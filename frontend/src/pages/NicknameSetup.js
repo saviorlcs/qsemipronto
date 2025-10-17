@@ -1,14 +1,12 @@
+// frontend/src/pages/NicknameSetup.js
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { api } from '../lib/api';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://studycycle-1.preview.emergentagent.com';
-const API = `${BACKEND_URL}/api`;
 
 export default function NicknameSetup() {
   const navigate = useNavigate();
@@ -17,35 +15,20 @@ export default function NicknameSetup() {
   const [isChecking, setIsChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const validateNickname = (value) => {
-    const regex = /^[a-zA-Z0-9]{4,16}$/;
-    return regex.test(value);
-  };
-
-  const validateTag = (value) => {
-    const regex = /^[a-zA-Z0-9]{3,4}$/;
-    return regex.test(value);
-  };
+  const validateNickname = (v) => /^[a-zA-Z0-9]{4,16}$/.test(v);
+  const validateTag = (v) => /^[a-zA-Z0-9]{3,4}$/.test(v);
 
   const checkAvailability = async () => {
-    if (!validateNickname(nickname)) {
-      toast.error('Nickname deve ter 4-16 caracteres alfanuméricos');
-      return;
-    }
-    if (!validateTag(tag)) {
-      toast.error('Tag deve ter 3-4 caracteres alfanuméricos');
-      return;
-    }
+    if (!validateNickname(nickname)) return toast.error('Nickname deve ter 4-16 caracteres alfanuméricos');
+    if (!validateTag(tag)) return toast.error('Tag deve ter 3-4 caracteres alfanuméricos');
 
     setIsChecking(true);
     try {
-      const res = await axios.get(`${API}/user/nickname/check?nickname=${nickname}&tag=${tag}`);
-      if (res.data.available) {
-        toast.success('Este nickname#tag está disponível!');
-      } else {
-        toast.error(res.data.reason || 'Este nickname#tag já está em uso');
-      }
-    } catch (error) {
+      const res = await api.get('/user/nickname/check', { params: { nickname, tag } });
+      res.data.available
+        ? toast.success('Este nickname#tag está disponível!')
+        : toast.error(res.data.reason || 'Este nickname#tag já está em uso');
+    } catch {
       toast.error('Erro ao verificar disponibilidade');
     } finally {
       setIsChecking(false);
@@ -54,19 +37,12 @@ export default function NicknameSetup() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!validateNickname(nickname)) {
-      toast.error('Nickname deve ter 4-16 caracteres alfanuméricos');
-      return;
-    }
-    if (!validateTag(tag)) {
-      toast.error('Tag deve ter 3-4 caracteres alfanuméricos');
-      return;
-    }
+    if (!validateNickname(nickname)) return toast.error('Nickname deve ter 4-16 caracteres alfanuméricos');
+    if (!validateTag(tag)) return toast.error('Tag deve ter 3-4 caracteres alfanuméricos');
 
     setIsSubmitting(true);
     try {
-      await axios.post(`${API}/user/nickname`, { nickname, tag }, { withCredentials: true });
+      await api.post('/user/nickname', { nickname, tag });
       toast.success('Nickname#tag criado com sucesso!');
       navigate('/dashboard');
     } catch (error) {
@@ -92,7 +68,6 @@ export default function NicknameSetup() {
             <div>
               <Label className="text-gray-300 mb-2 block">Nickname</Label>
               <Input
-                data-testid="nickname-input"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
                 placeholder="4-16 caracteres"
@@ -105,7 +80,6 @@ export default function NicknameSetup() {
             <div>
               <Label className="text-gray-300 mb-2 block">Tag</Label>
               <Input
-                data-testid="tag-input"
                 value={tag}
                 onChange={(e) => setTag(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
                 placeholder="3-4 caracteres"
@@ -127,15 +101,14 @@ export default function NicknameSetup() {
                 onClick={checkAvailability}
                 disabled={!nickname || !tag || isChecking}
                 className="flex-1 bg-slate-700 hover:bg-slate-600 text-white"
-                data-testid="check-button"
               >
                 {isChecking ? 'Verificando...' : 'Verificar'}
               </Button>
+
               <Button
                 type="submit"
                 disabled={!nickname || !tag || isSubmitting}
                 className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white"
-                data-testid="submit-button"
               >
                 {isSubmitting ? 'Criando...' : 'Criar'}
               </Button>

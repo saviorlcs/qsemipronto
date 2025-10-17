@@ -72,6 +72,44 @@ code {
         --chart-5: 340 75% 55%;
     }
 }
+:root{
+  /* tema (já existia na minha msg anterior) */
+  --bg:#0b1220;
+  --surface:#0f172a;
+  --primary:#06b6d4;
+  --accent:#8b5cf6;
+  --text:#e5e7eb;
+
+  /* BORDAS GLOBAIS */
+  --app-radius: 16px;
+  --app-border-w: 1px;
+  --app-border: rgba(148,163,184,.35);
+  --app-glow: 0 0 0 rgba(0,0,0,0);
+}
+
+/* superfícies que respeitam o “preset” de borda */
+.app-surface{
+  background: color-mix(in oklab, var(--surface) 86%, transparent);
+  border-radius: var(--app-radius);
+  border: var(--app-border-w) solid var(--app-border);
+  box-shadow: var(--app-glow);
+}
+
+/* exemplo – corpo usa as cores do tema */
+body{
+  background:
+    radial-gradient(1000px circle at 20% -10%, var(--surface), transparent 60%),
+    linear-gradient(180deg, var(--bg), #0a0f1a);
+  color: var(--text);
+}
+@keyframes auraPulse {
+  0%   { box-shadow: 0 0 16px rgba(56,189,248,.12); }
+  50%  { box-shadow: 0 0 28px rgba(168,85,247,.24); }
+  100% { box-shadow: 0 0 16px rgba(56,189,248,.12); }
+}
+.seal-animated {
+  animation: auraPulse 3.5s ease-in-out infinite;
+}
 
 @layer base {
     * {
