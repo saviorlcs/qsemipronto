@@ -27,7 +27,7 @@ from fastapi import Depends, Body
 import time
 from collections import defaultdict, deque
 from bson import ObjectId
-from shop_seed import SHOP_ITEMS
+# from shop_seed import SHOP_ITEMS  # Não mais necessário - usamos make_items()
 ROOT_DIR = SysPath(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -393,18 +393,18 @@ def timer_config_for(user) -> dict:
 def _sec(mins: int) -> int:
     return int(mins) * 60
 
-@app.get("/api/shop/list")
-def shop_list():
-    return {"items": SHOP_ITEMS}
-
-# compat extras que a Shop usa de fallback
-@app.get("/api/shop")
-def shop_root():
-    return {"items": SHOP_ITEMS}
-
-@app.get("/api/shop/all")
-def shop_all():
-    return {"items": SHOP_ITEMS}
+# Endpoints antigos comentados - usamos os novos endpoints em api_router
+# @app.get("/api/shop/list")
+# def shop_list():
+#     return {"items": SHOP_ITEMS}
+# 
+# @app.get("/api/shop")
+# def shop_root():
+#     return {"items": SHOP_ITEMS}
+# 
+# @app.get("/api/shop/all")
+# def shop_all():
+#     return {"items": SHOP_ITEMS}
 
 
 @app.on_event("startup")
@@ -2455,43 +2455,211 @@ STATIC_COLORS = ["#8B5CF6","#EAB308","#22C55E","#1D4ED8","#06B6D4","#2563EB",
                  "#22D3EE","#10B981","#A78BFA","#F59E0B","##f472b6","#60a5fa"]
 
 def seal_effects(rarity: str, i: int) -> Dict[str, Any]:
-    """efeitos por raridade para SELOS"""
+    """efeitos por raridade para SELOS - AVATARES PERSONALIZADOS INCRÍVEIS"""
+    # Padrões únicos para cada selo criar avatares diferentes
+    patterns = ["geometric", "organic", "crystalline", "nebula", "fractal", "waves", "hexagon", "spiral", "mandala", "constellation"]
+    
     base = {
-        "mode": "handle_hash",
+        "mode": "handle_hash",  # Gera avatar único baseado no hash do nickname
         "angle": (i * 27) % 360,
         "icon": ICONS[i % len(ICONS)],
         "static_color": STATIC_COLORS[i % len(STATIC_COLORS)],
+        "pattern": patterns[i % len(patterns)],
+        "pattern_intensity": 0.3,
     }
+    
     if rarity == "common":
-        base.update({"glow":"soft", "pattern": ["hatch","grain","stripes","ring","bevel"][i % 5]})
-    elif rarity == "epic":
-        base.update({"glow":"strong", "pulse": True, "aura":"subtle"})
+        # Comum: Avatar básico com padrão sutil e brilho leve
+        base.update({
+            "glow": "soft",
+            "pattern_intensity": 0.2,
+            "border_style": "simple",
+            "animation_speed": "none"
+        })
     elif rarity == "rare":
-        base.update({"glow":"neon", "particles":"sparks", "orbit":"slow"})
+        # Raro: + Órbita lenta + Partículas "sparks" + Brilho neon
+        base.update({
+            "glow": "neon",
+            "particles": "sparks",
+            "orbit": "slow",
+            "pattern_intensity": 0.4,
+            "border_style": "animated",
+            "animation_speed": "slow",
+            "shadow_layers": 2
+        })
+    elif rarity == "epic":
+        # Especial: + Aura + Pulse + Trail + Partículas "stardust" mais densas
+        base.update({
+            "glow": "intense",
+            "pulse": True,
+            "aura": "radiant",
+            "particles": "stardust",
+            "orbit": "medium",
+            "trail": "flowing",
+            "pattern_intensity": 0.6,
+            "border_style": "double",
+            "animation_speed": "medium",
+            "shadow_layers": 3,
+            "inner_glow": True
+        })
     else:  # legendary
-        base.update({"glow":"neon","particles":"stardust","orbit":"fast","trail":"stardust","auto_theme_sync":True})
+        # Lendário: TUDO + Pattern de anéis + Múltiplas camadas + Auto-sync com tema
+        base.update({
+            "glow": "ethereal",
+            "pulse": True,
+            "aura": "cosmic",
+            "particles": "galaxy",
+            "orbit": "fast",
+            "trail": "comet",
+            "pattern_intensity": 0.8,
+            "pattern_overlay": "rings",
+            "border_style": "prismatic",
+            "animation_speed": "fast",
+            "shadow_layers": 5,
+            "inner_glow": True,
+            "auto_theme_sync": True,
+            "holographic": True,
+            "shimmer": True
+        })
+    
     return {"avatar_style": base}
 
 def border_effects(rarity: str, i: int) -> Dict[str, Any]:
-    styles = ["soft","rounded","cut","double","neon","glass"]
-    eff = {"style": styles[i % len(styles)], "thickness": 2, "glow": True}
-    if rarity == "epic":
-        eff.update({"thickness": 3, "hover_reactive": True})
+    """efeitos por raridade para BORDAS - PROGRESSÃO VISUAL IMPRESSIONANTE"""
+    styles = ["soft", "rounded", "cut", "double", "neon", "glass", "crystalline", "plasma", "aurora", "quantum"]
+    
+    base = {
+        "style": styles[i % len(styles)],
+        "thickness": 2,
+        "glow": True,
+        "glow_intensity": 0.3
+    }
+    
+    if rarity == "common":
+        # Comum: Borda simples com brilho sutil
+        base.update({
+            "thickness": 2,
+            "glow_intensity": 0.2,
+            "animation": "none",
+            "layers": 1
+        })
     elif rarity == "rare":
-        eff.update({"thickness": 3, "animated": "pulse", "accent_color_sync": True})
-    elif rarity == "legendary":
-        eff.update({"thickness": 4, "animated": "rainbow", "corner_fx": "sparkle", "accent_color_sync": True})
-    return eff
+        # Raro: Borda que brilha BASTANTE e se MOVE + animação "rainbow" rotativa
+        base.update({
+            "thickness": 2,
+            "glow_intensity": 0.6,
+            "animated": "rainbow",
+            "accent_color_sync": True,
+            "animation_speed": "slow",
+            "layers": 2,
+            "blur_amount": 2
+        })
+    elif rarity == "epic":
+        # Especial: + Espessura maior + Interatividade (hover) + Pulse + Glow mais intenso
+        base.update({
+            "thickness": 3,
+            "glow_intensity": 0.8,
+            "animated": "pulse-rainbow",
+            "hover_reactive": True,
+            "hover_scale": 1.05,
+            "accent_color_sync": True,
+            "animation_speed": "medium",
+            "layers": 3,
+            "blur_amount": 3,
+            "inner_border": True,
+            "particle_trail": "subtle"
+        })
+    else:  # legendary
+        # Lendário: TUDO + Múltiplas camadas + Efeitos de partículas + Cantos com sparkles
+        base.update({
+            "thickness": 4,
+            "glow_intensity": 1.0,
+            "animated": "prismatic",
+            "hover_reactive": True,
+            "hover_scale": 1.08,
+            "hover_rotate": True,
+            "accent_color_sync": True,
+            "animation_speed": "fast",
+            "layers": 5,
+            "blur_amount": 4,
+            "inner_border": True,
+            "outer_border": True,
+            "particle_trail": "intense",
+            "corner_fx": "sparkle",
+            "edge_shimmer": True,
+            "gradient_shift": True,
+            "holographic": True
+        })
+    
+    return base
 
 def theme_effects(rarity: str, i: int) -> Dict[str, Any]:
+    """efeitos por raridade para TEMAS - EXPERIÊNCIA IMERSIVA INCRÍVEL"""
     pal = PALETTES[i % len(PALETTES)]
+    
+    base = {
+        "palette": pal,
+        "transition_speed": "normal"
+    }
+    
     if rarity == "common":
-        return {"palette": pal, "bg":"subtle"}
-    if rarity == "epic":
-        return {"palette": pal, "bg":"subtle-animated"}
-    if rarity == "rare":
-        return {"palette": pal, "bg":"parallax","transition":"page"}
-    return {"palette": pal, "bg":"cycle-reactive","celebrate_milestones": True}
+        # Comum: Paleta básica com fundo sutil
+        base.update({
+            "bg": "solid",
+            "transition_speed": "normal",
+            "ambient_effects": False
+        })
+    elif rarity == "rare":
+        # Raro: + Background animado com gradiente + Efeitos ambientes sutis
+        base.update({
+            "bg": "gradient-animated",
+            "transition_speed": "smooth",
+            "ambient_effects": True,
+            "ambient_intensity": 0.3,
+            "color_shift": "subtle",
+            "breathing_effect": True
+        })
+    elif rarity == "epic":
+        # Especial: + Background REATIVO ao ciclo (muda durante focus/break) + Parallax + Transições
+        base.update({
+            "bg": "cycle-reactive",
+            "transition_speed": "smooth",
+            "transition_type": "page",
+            "ambient_effects": True,
+            "ambient_intensity": 0.6,
+            "color_shift": "medium",
+            "breathing_effect": True,
+            "parallax_layers": 2,
+            "focus_mode_enhancement": True,
+            "break_mode_relaxation": True,
+            "particle_background": "floating",
+            "gradient_animation": "wave"
+        })
+    else:  # legendary
+        # Lendário: TUDO + Parallax avançado + Celebrações automáticas + Efeitos cósmicos
+        base.update({
+            "bg": "cosmic-parallax",
+            "transition_speed": "fluid",
+            "transition_type": "morphing",
+            "ambient_effects": True,
+            "ambient_intensity": 1.0,
+            "color_shift": "dynamic",
+            "breathing_effect": True,
+            "parallax_layers": 4,
+            "focus_mode_enhancement": True,
+            "break_mode_relaxation": True,
+            "particle_background": "starfield",
+            "gradient_animation": "aurora",
+            "celebrate_milestones": True,
+            "celebration_effects": "fireworks",
+            "time_of_day_sync": True,
+            "weather_effects": True,
+            "nebula_overlay": True,
+            "shimmer_accents": True,
+            "holographic_ui": True
+        })
+    
+    return base
 
 
 # ------------------------- SEED (90 ITENS) -------------------------
@@ -2510,26 +2678,26 @@ def make_items() -> List[Dict[str, Any]]:
                 if item_type == "seal":
                     effects = seal_effects(r, idx)
                     desc = {
-                        "common":"Foto do nick#tag + brilho sutil (padrão discreto).",
-                        "epic":"Brilho forte + pulsar leve e aura.",
-                        "rare":"Neon + partículas discretas e órbita lenta.",
-                        "legendary":"Aura + stardust + trilha; sincroniza com tema.",
+                        "common":"Avatar personalizado baseado no seu nick#tag com padrão único e brilho sutil.",
+                        "rare":"Avatar NEON com partículas cintilantes, órbita animada e brilho intenso que se move!",
+                        "epic":"Avatar RADIANTE com aura brilhante, pulsação hipnótica, trilha fluindo e partículas de poeira estelar!",
+                        "legendary":"Avatar CÓSMICO SUPREMO com galáxia de partículas, aura etérea, trilha de cometa, anéis prismáticos e sincronização automática com seu tema! ✨🌌",
                     }[r]
                 elif item_type == "border":
                     effects = border_effects(r, idx)
                     desc = {
-                        "common":"Borda com glow leve.",
-                        "epic":"Glow forte e hover reativo.",
-                        "rare":"Animação pulsante e sincronia com tema.",
-                        "legendary":"Arco-íris suave + efeitos de canto.",
+                        "common":"Borda elegante com brilho suave.",
+                        "rare":"Borda ANIMADA arco-íris que BRILHA e SE MOVE constantemente, sincronizada com as cores do tema!",
+                        "epic":"Borda INTERATIVA que reage ao hover, com 3 camadas, pulsação rainbow e trilha de partículas sutis!",
+                        "legendary":"Borda PRISMÁTICA HOLOGRÁFICA com 5 camadas, efeitos de canto cintilantes, partículas intensas, shimmer nas bordas e gradientes que mudam dinamicamente! 🌈✨",
                     }[r]
                 else:
                     effects = theme_effects(r, idx)
                     desc = {
-                        "common":"Paleta fixa e fundo sutil.",
-                        "epic":"Accent por horário, bg animado sutil.",
-                        "rare":"Parallax e transições animadas.",
-                        "legendary":"Reage ao ciclo (focus/break) e celebra metas.",
+                        "common":"Paleta de cores personalizada com fundo sólido.",
+                        "rare":"Tema com gradiente ANIMADO, efeitos ambientes e respiração suave que muda de cor!",
+                        "epic":"Tema REATIVO que muda durante focus/break, com parallax em 2 camadas, partículas flutuantes e animação em onda!",
+                        "legendary":"Tema CÓSMICO com parallax em 4 camadas, campo de estrelas, nebulosa overlay, celebrações automáticas de milestones, sincronização com horário do dia e efeitos holográficos! 🌟🎆🌌",
                     }[r]
 
                 items.append({

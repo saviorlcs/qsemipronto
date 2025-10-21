@@ -7,7 +7,13 @@ import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, ShoppingBag } from "lucide-react";
-import { applyThemeEffects, applyBorderEffects, bootApply } from "@/lib/siteStyle";
+import {
+   applyThemeEffects,
+   applyBorderEffects,
+   bootApply,
+   applyThemeById,
+   applyBorderById,
+ } from "@/lib/siteStyle";
 import SealAvatar from "@/components/SealAvatar";
 
 /* ---------- helpers de chamadas ---------- */
@@ -96,16 +102,22 @@ const ThemePreview = ({ palette }) => {
 };
 
 const borderPresetFromId = () => ({ radius: 16, width: 2, color: "rgba(148,163,184,.35)", glow: "0 0 0 rgba(0,0,0,0)" });
-const BorderPreview = () => {
-  const p = borderPresetFromId();
+const BorderPreview = ({ effects }) => {
+  const thick = effects?.thickness ?? 2;
   return (
-    <div className="mx-auto w-28 h-16"
-         style={{ background: "var(--surface)", borderRadius: p.radius, border: `${p.width}px solid ${p.color}`, boxShadow: p.glow }} />
+    <div className="mx-auto w-28 h-16 rounded-xl relative overflow-hidden"
+         style={{ background: "var(--surface)", border: `${thick}px solid var(--app-border)` }}>
+      {/* Indicador sutil de que é animada (o brilho real vem do hover global) */}
+      {effects?.animated && (
+        <div className="absolute inset-0 pointer-events-none"
+             style={{ background: "conic-gradient(from 0deg, rgba(255,255,255,.08), transparent 40%, rgba(255,255,255,.08))", mixBlendMode:"overlay" }} />
+      )}
+    </div>
   );
 };
 
 const ItemPreview = ({ item, user }) => {
-  if (item.item_type === "border") return <BorderPreview />;
+ if (item.item_type === "border") return <BorderPreview effects={item?.effects} />;
   if (item.item_type === "theme")  return <ThemePreview palette={item?.effects?.palette} />;
   // selo = foto de perfil a partir do nick#tag com os efeitos do item
   return <SealAvatar user={user} item={item} size={76} />;
@@ -122,23 +134,45 @@ export default function Shop() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const me = await api.get("/auth/me");
-        setUser(me.data);
-        const { endpoint, data } = await getAnyShopList(api);
-        const items = extractItems(data);
-        if (!items.length) throw new Error(`Lista vazia no endpoint ${endpoint}`);
-        setShopItems(items);
-        setEquippedItems(me.data?.equipped_items ?? { seal: null, border: null, theme: null });
-      } catch (e) {
-        console.error("[Shop] load error:", e?.response?.status, e?.response?.data || e?.message);
-        toast.error("Erro ao carregar a loja");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  // injeta o CSS dos efeitos (selos, temas e bordas)
+  bootApply();
+
+  (async () => {
+    try {
+      const me = await api.get("/auth/me");
+      const { data } = await getAnyShopList(api);
+      const items = Array.isArray(data?.items) ? data.items : [];
+
+      setUser(me.data);
+      setShopItems(items);
+
+      // mapa por id para converter ids -> objetos
+      const byId = Object.fromEntries(items.map(it => [it.id, it]));
+      const eq = me.data?.equipped_items ?? { seal:null, border:null, theme:null };
+
+      // guarda o equipado como OBJETO (mantém id se não achar o item na lista)
+      const equippedObj = {
+        seal:   byId[eq.seal]   || eq.seal   || null,
+        border: byId[eq.border] || eq.border || null,
+        theme:  byId[eq.theme]  || eq.theme  || null,
+      };
+      setEquippedItems(equippedObj);
+
+      // aplica os efeitos reais do equipado assim que a tela abre
+      bootApply({
+        themeEffects:  byId[eq.theme]?.effects  || null,
+        borderEffects: byId[eq.border]?.effects || null,
+      });
+    } catch (e) {
+      console.error("[Shop] load error:", e?.response?.status, e?.response?.data || e?.message);
+      toast.error("Erro ao carregar a loja");
+    } finally {
+      setLoading(false);
+    }
+  })();
+}, []);
+
+useEffect(() => { bootApply(); }, []); // injeta o CSS base
 
   useEffect(() => {
     if (!user) return;
@@ -225,6 +259,18 @@ export default function Shop() {
     }
   }
 
+function previewItem(item) {
+  if (!item) return;
+  if (item.item_type === "theme")  applyThemeEffects(item.effects);
+  if (item.item_type === "border") applyBorderEffects(item.effects);
+  // selos já pré-visualizam sozinhos via <SealAvatar item={item} />
+}
+function restoreEquipped(equipped) {
+  applyThemeEffects(equipped?.theme?.effects || null);
+  applyBorderEffects(equipped?.border?.effects || null);
+}
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900" style={{ fontFamily: "Inter, sans-serif" }}>
       <Header user={user} />
@@ -267,37 +313,21 @@ export default function Shop() {
                         <div
                           key={item.id}
                           className={`relative group app-surface border border-slate-600/40 rounded-2xl p-4 text-center transition-all ${rui.glow} ${equipped ? `ring-2 ${rui.ring}` : ""}`}
+                          onMouseEnter={() => previewItem(item)}
+                          onMouseLeave={() => restoreEquipped(equippedItems)}
                         >
                           <div className={`absolute left-2 top-2 text-[10px] px-2 py-0.5 rounded-full ${rui.badge}`}>
                             {RARITY_LABEL[item.rarity] || "Comum"}
                           </div>
 
                           <div className="mb-3">
-                           <ItemPreview item={item} user={user} />
-                          </div>
+  <ItemPreview item={item} user={user} />
+</div>
 
-                          <p className="font-semibold text-sm text-white mb-0.5">{item.name}</p>
-                          <p className="text-xs text-gray-400 mb-3">C${item.price}</p>
+<p className="font-semibold text-sm text-white mb-0.5">{item.name}</p>
+<p className="text-xs text-gray-400 mb-3">C${item.price}</p>
 
-{item.item_type === "seal" && (
-  <SealAvatar user={user} item={item} size={76} />
-)}
 
-{item.item_type === "border" && (
-  <div className="bordered p-3 rounded-2xl"
-       data-border={item.effects?.animated || ""}
-       style={{ borderWidth: (item.effects?.thickness || 2) + "px" }}>
-    <div className="text-xs opacity-80">Preview da Borda</div>
-  </div>
-)}
-
-{item.item_type === "theme" && (
-  <div className="cycle-bg h-16 rounded-xl"
-       style={{
-         // Mostra a paleta do tema no bloco
-         background: `linear-gradient(135deg, ${(item.effects?.palette||[])[0]||'#0ea5e9'}, ${(item.effects?.palette||[])[1]||'#111827'})`
-       }} />
-)}
 
 
                           {!owned ? (

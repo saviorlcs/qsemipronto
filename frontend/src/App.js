@@ -17,8 +17,25 @@ import "@/App.css";
 import { bootApply } from "@/lib/siteStyle";
 import { presenceOpen, presencePing, presenceLeave } from "@/lib/friends";
 
-/* ---------------- Auth / Guard ---------------- */
+/* ---------------- Ping simples ao /api (equivalente ao primeiro código) ---------------- */
+function HelloProbe() {
+  useEffect(() => {
+    (async () => {
+      try {
+        // Se @/lib/api tiver baseURL = `${REACT_APP_BACKEND_URL}/api`,
+        // então GET "/" equivale a GET `${REACT_APP_BACKEND_URL}/api/`
+        const r = await api.get("/");
+        const msg = r?.data?.message ?? JSON.stringify(r?.data);
+        console.log("[/api] hello:", msg);
+      } catch (e) {
+        console.error("Falha ao chamar /api:", e);
+      }
+    })();
+  }, []);
+  return null; // não renderiza nada
+}
 
+/* ---------------- Auth / Guard ---------------- */
 function AuthHandler() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,12 +124,12 @@ function AuthHandler() {
 }
 
 /* ---------------- App ---------------- */
-
 export default function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <AuthHandler />
+        <HelloProbe /> {/* integra o "helloWorldApi" do primeiro código */}
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/setup" element={<NicknameSetup />} />
