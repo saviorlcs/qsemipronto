@@ -15,6 +15,9 @@ import {
    applyBorderById,
  } from "@/lib/siteStyle";
 import SealAvatar from "@/components/SealAvatar";
+import AdvancedSealAvatar from "@/components/AdvancedSealAvatar";
+import AdvancedBorderPreview from "@/components/AdvancedBorderPreview";
+import AdvancedThemePreview from "@/components/AdvancedThemePreview";
 
 /* CSS inline para animações */
 const shopStyles = `
@@ -58,7 +61,6 @@ async function postAny(paths, body) {
   throw lastErr;
 }
 
-/* ---------- UI helpers ---------- */
 const RARITY_LABEL = { common: "Comum", rare: "Raro", epic: "Especial", legendary: "Lendário" };
 const rarityUI = {
   common:    { badge: "bg-slate-600 text-slate-200", ring: "ring-slate-500/40", glow: "" },
@@ -66,95 +68,12 @@ const rarityUI = {
   epic:      { badge: "bg-purple-500/15 text-purple-300 border border-purple-400/30", ring: "ring-purple-400/50", glow: "shadow-[0_0_18px_rgba(168,85,247,0.28)]" },
   legendary: { badge: "bg-amber-500/15 text-amber-300 border border-amber-400/40", ring: "ring-amber-400/70", glow: "shadow-[0_0_22px_rgba(251,191,36,0.35)]" },
 };
-const gradFor = (seed) => {
-  const h = (Number(seed || 0) * 37) % 360;
-  return { from: `hsl(${h} 70% 60%)`, to: `hsl(${(h + 40) % 360} 70% 45%)` };
-};
-const getInitials = (name = "") =>
-  (String(name).trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("")) || "U";
-const SealPreview = ({ seed, userName, size = 64 }) => {
-  const { from, to } = gradFor(seed);
-  const initials = getInitials(userName);
-  return (
-    <div className="rounded-full mx-auto relative overflow-hidden"
-         style={{ width: size, height: size, background: `linear-gradient(135deg, ${from}, ${to})` }}>
-      <div className="absolute inset-0 flex items-center justify-center text-white/95 font-bold">{initials}</div>
-    </div>
-  );
-};
-const themeFromId = (id) => {
-  const n = Number(String(id).split("_")[1] ?? 0) || 0;
-  const h = (n * 29) % 360;
-  return {
-    bg:      `hsl(${h} 40% 10%)`,
-    surface: `hsl(${(h + 8) % 360} 32% 16%)`,
-    primary: `hsl(${(h + 32) % 360} 82% 55%)`,
-    accent:  `hsl(${(h + 300) % 360} 72% 60%)`,
-  };
-};
-// --- PREVIEWs ---
-const ThemePreview = ({ palette }) => {
-  const [p0, p1] = palette || [];
-  return (
-    <div className="mx-auto w-28 h-20 rounded-lg overflow-hidden" style={{ border: "1px solid var(--app-border)" }}>
-      <div className="h-6" style={{ background: p0 || "#0ea5e9" }} />
-      <div className="px-2 py-2 h-14" style={{ background: p1 || "#0b1020" }}>
-        <div className="h-6 rounded mb-1" style={{ background: "rgba(255,255,255,.08)" }} />
-        <div className="flex gap-1">
-          <div className="h-3 flex-1 rounded" style={{ background: p0 || "#0ea5e9" }} />
-          <div className="h-3 w-8 rounded"  style={{ background: p0 || "#0ea5e9" }} />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const borderPresetFromId = () => ({ radius: 16, width: 2, color: "rgba(148,163,184,.35)", glow: "0 0 0 rgba(0,0,0,0)" });
-const BorderPreview = ({ effects }) => {
-  const thick = effects?.thickness ?? 2;
-  const animated = effects?.animated;
-  
-  // Gera cor baseada no estilo de animação
-  const getBorderColor = () => {
-    if (!animated || animated === "none") return "rgba(148,163,184,.5)";
-    if (animated === "rainbow") return "#06b6d4";
-    if (animated === "pulse-rainbow") return "#a78bfa";
-    if (animated === "prismatic") return "#f59e0b";
-    return "rgba(148,163,184,.5)";
-  };
-  
-  return (
-    <div className="mx-auto w-28 h-20 rounded-xl relative overflow-hidden flex items-center justify-center"
-         style={{ 
-           background: "linear-gradient(135deg, rgba(15,23,42,.8), rgba(30,41,59,.9))",
-           border: `${thick}px solid ${getBorderColor()}`,
-           boxShadow: animated && animated !== "none" ? `0 0 12px ${getBorderColor()}40` : "none"
-         }}>
-      {/* Conteúdo de exemplo dentro da borda */}
-      <div className="space-y-1 w-20">
-        <div className="h-2 rounded-full" style={{ background: "rgba(255,255,255,.15)" }} />
-        <div className="h-2 w-16 rounded-full" style={{ background: "rgba(255,255,255,.10)" }} />
-        <div className="h-2 w-12 rounded-full" style={{ background: "rgba(255,255,255,.08)" }} />
-      </div>
-      
-      {/* Indicador de animação */}
-      {animated && animated !== "none" && (
-        <div className="absolute inset-0 pointer-events-none"
-             style={{ 
-               background: "conic-gradient(from 0deg, rgba(255,255,255,.05), transparent 40%, rgba(255,255,255,.05))", 
-               mixBlendMode:"overlay",
-               animation: "spin 4s linear infinite"
-             }} />
-      )}
-    </div>
-  );
-};
 
 const ItemPreview = ({ item, user }) => {
- if (item.item_type === "border") return <BorderPreview effects={item?.effects} />;
-  if (item.item_type === "theme")  return <ThemePreview palette={item?.effects?.palette} />;
-  // selo = foto de perfil a partir do nick#tag com os efeitos do item
-  return <SealAvatar user={user} item={item} size={76} />;
+  if (item.item_type === "border") return <AdvancedBorderPreview effects={item?.effects} size={120} />;
+  if (item.item_type === "theme")  return <AdvancedThemePreview effects={item?.effects} size={120} />;
+  // Selo avançado com todos os efeitos
+  return <AdvancedSealAvatar user={user} item={item} size={80} />;
 };
 
 
@@ -175,7 +94,7 @@ export default function Shop() {
     try {
       const me = await api.get("/auth/me");
       const { data } = await getAnyShopList(api);
-      const items = Array.isArray(data?.items) ? data.items : [];
+      const items = extractItems(data);
 
       setUser(me.data);
       setShopItems(items);

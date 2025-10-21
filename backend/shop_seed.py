@@ -1,10 +1,13 @@
 # backend/shop_seed.py
-# Gera 90 itens: 30 selos, 30 bordas, 30 temas — com efeitos usados no front
+# Gera 90 itens incríveis: 30 selos, 30 bordas, 30 temas
+# Nova curva: 5000h estudo = 60,000 coins
+# Raro: 200h+ (2,400+ coins), Especial: 800h+ (9,600+), Lendário: 2000h+ (24,000+)
 
 from math import pow
 
 RARITIES = [("common", 12), ("rare", 9), ("epic", 6), ("legendary", 3)]
-ICONS = ["dot","triangle","star","bolt","diamond","target","leaf","heart","clover"]
+ICONS = ["star","sparkle","bolt","flame","crystal","nova","aurora","phoenix","cosmos"]
+PATTERNS = ["none", "dots", "grid", "waves", "particles", "spiral", "constellation", "nebula", "fractal"]
 
 def hsl_to_hex(h: int, s: int, l: int) -> str:
     # HSL -> HEX (inteiro, sem libs externas)
@@ -48,63 +51,71 @@ _EPIC_HUES      = _ring_hues(9,  start=8)          # 9 cores intensas
 _LEGEND_HUES    = [48, 195, 275]                   # dourado, ciano, violeta
 
 def make_seal(i: int) -> dict:
-    # 1–12 comum | 13–18 raro | 19–27 épico | 28–30 lendário
+    # Nova distribuição: 1-12 comum | 13-21 raro | 22-27 épico | 28-30 lendário
     if   i <= 12:  rarity, idx = "common",    i - 1
-    elif i <= 18:  rarity, idx = "rare",      i - 13
+    elif i <= 21:  rarity, idx = "rare",      i - 13
     elif i <= 27:  rarity, idx = "epic",      i - 19
     else:          rarity, idx = "legendary", i - 28
 
-    # HUE + saturação/luminância por raridade
+    # Paletas mais vibrantes e distintas
     if rarity == "common":
-        hue, s, l = _COMMON_HUES[idx % 12], 72, 54
-        icon_pool = ["dot", "triangle"]
-        pulse = False
-        orbit = "none"
-        pattern = "none"
-        trail = False
+        # Gradientes sutis mas bonitos
+        hue, s, l = _COMMON_HUES[idx % 12], 70, 58
+        icon = ICONS[idx % 3]  # star, sparkle, bolt
+        glow = "subtle"
+        particles = False
+        animation = "none"
+        interactive = False
+        holographic = False
     elif rarity == "rare":
-        hue, s, l = _RARE_HUES[idx % 6], 78, 52
-        icon_pool = ["star", "bolt"]
-        pulse = False
-        orbit = "slow"
-        pattern = "none"
-        trail = False
+        # Brilho intenso + movimento
+        hue, s, l = _RARE_HUES[idx % 6], 80, 55
+        icon = ICONS[3 + (idx % 3)]  # flame, crystal, nova
+        glow = "intense"
+        particles = True  # partículas leves orbitando
+        animation = "pulse"  # pulsa suavemente
+        interactive = False
+        holographic = False
     elif rarity == "epic":
-        hue, s, l = _EPIC_HUES[idx % 9], 82, 50
-        icon_pool = ["diamond", "target"]
-        pulse = True
-        orbit = "slow"
-        pattern = "rings"
-        trail = False
+        # Efeitos geométricos + interatividade
+        hue, s, l = _EPIC_HUES[idx % 6], 85, 52
+        icon = ICONS[6 + (idx % 3)]  # aurora, phoenix, cosmos
+        glow = "radiant"
+        particles = True
+        animation = "orbit"  # órbitas de partículas
+        interactive = True  # hover = explosão de partículas
+        holographic = False
     else:  # legendary
-        hue, s, l = _LEGEND_HUES[idx % 3], 88, 52
-        icon_pool = ["leaf", "heart", "clover"]
-        pulse = True
-        orbit = "slow"
-        pattern = "flare"
-        trail = True
+        # Prisma holográfico + trilha
+        hue, s, l = _LEGEND_HUES[idx % 3], 90, 50
+        icon = ICONS[6 + (idx % 3)]
+        glow = "prismatic"
+        particles = True
+        animation = "quantum"  # efeito quântico
+        interactive = True
+        holographic = True  # efeito holográfico rainbow
 
     base_hex = hsl_to_hex(hue, s, l)
-    icon = icon_pool[i % len(icon_pool)]
-    angle = (i * 17) % 360
+    accent_hex = hsl_to_hex((hue + 40) % 360, s, max(30, l - 10))
 
     return {
         "id": f"seal_{i}",
-        "name": f"Selo {i}",
+        "name": f"Selo {ICONS[idx % len(ICONS)].title()} #{i}" if rarity != "common" else f"Selo {i}",
         "item_type": "seal",
         "rarity": rarity,
-        "price": price_curve(i, 30, 50, 2800, 2.2),
-        "level_required": level_curve(i, 30, 18),
+        # Nova curva: comum 50-600, raro 2400-6000, épico 9600-18000, lendário 24000-45000
+        "price": price_curve(i, 30, 50, 45000, 2.8),
+        "level_required": level_curve(i, 30, 25),
         "effects": {
-            "avatar_style": {
-                "static_color": base_hex,
-                "icon": icon,
-                "angle": angle,
-                "pulse": pulse,
-                "pattern": pattern,
-                "orbit": orbit,
-                "trail": trail,
-            }
+            "base_color": base_hex,
+            "accent_color": accent_hex,
+            "icon": icon,
+            "glow": glow,
+            "particles": particles,
+            "animation": animation,
+            "interactive": interactive,
+            "holographic": holographic,
+            "pattern": PATTERNS[idx % len(PATTERNS)]
         },
         "perks": {},
     }
@@ -112,57 +123,130 @@ def make_seal(i: int) -> dict:
 
 # --------- BORDAS (30) ---------
 def make_border(i: int) -> dict:
-    rarity = "common"
-    if 11 <= i <= 16: rarity = "rare"
-    elif 17 <= i <= 26: rarity = "epic"
-    elif i >= 27: rarity = "legendary"
+    # Nova distribuição: 1-12 comum | 13-21 raro | 22-27 épico | 28-30 lendário
+    if   i <= 12:  rarity = "common"
+    elif i <= 21:  rarity = "rare"
+    elif i <= 27:  rarity = "epic"
+    else:          rarity = "legendary"
 
-    hue = (i * 23) % 360
-    color = hsl_to_hex(hue, 70, 65 if rarity == "common" else 58)
-    thickness = 2 if rarity in ("common","rare") else 3 if rarity == "epic" else 4
-    radius = 16 if rarity == "common" else 18 if rarity == "rare" else 20 if rarity == "epic" else 24
-    animated = "none" if rarity == "common" else "soft-glow" if rarity == "rare" else "circuit" if rarity == "epic" else "prism"
+    hue = (i * 29) % 360
+    
+    if rarity == "common":
+        # Borda básica com brilho sutil
+        color = hsl_to_hex(hue, 68, 60)
+        thickness = 2
+        radius = 16
+        animation = "static-glow"  # brilho estático
+        particles = False
+        interactive = False
+        glow_intensity = "low"
+    elif rarity == "rare":
+        # Borda animada com movimento
+        color = hsl_to_hex(hue, 75, 58)
+        thickness = 3
+        radius = 18
+        animation = "rotating-glow"  # brilho que rota
+        particles = False
+        interactive = False
+        glow_intensity = "medium"
+    elif rarity == "epic":
+        # Borda com partículas + interatividade
+        color = hsl_to_hex(hue, 82, 55)
+        thickness = 4
+        radius = 20
+        animation = "pulse-wave"  # ondas de energia
+        particles = True  # partículas ao redor
+        interactive = True  # hover = explosão de partículas
+        glow_intensity = "high"
+    else:  # legendary
+        # Borda holográfica prisma
+        color = hsl_to_hex(hue, 90, 52)
+        thickness = 5
+        radius = 24
+        animation = "prismatic-rainbow"  # arco-íris holográfico
+        particles = True
+        interactive = True
+        glow_intensity = "extreme"
 
     return {
         "id": f"border_{i}",
-        "name": f"Borda {i}",
+        "name": f"Borda {'Cosmic' if rarity=='legendary' else ('Epic' if rarity=='epic' else ('Rare' if rarity=='rare' else 'Common'))} #{i}",
         "item_type": "border",
         "rarity": rarity,
-        "price": price_curve(i, 30, 60, 3200, 2.0),
-        "level_required": level_curve(i, 30, 20),
+        # Nova curva: comum 60-700, raro 2500-7000, épico 10000-20000, lendário 25000-50000
+        "price": price_curve(i, 30, 60, 50000, 2.8),
+        "level_required": level_curve(i, 30, 25),
         "effects": {
             "thickness": thickness,
             "radius": radius,
             "color": color,
-            "animated": animated,          # lido no siteStyle/applyBorderEffects
-            "accent_color_sync": rarity != "common",
+            "animation": animation,
+            "particles": particles,
+            "interactive": interactive,
+            "glow_intensity": glow_intensity,
         },
         "perks": {},
     }
 
 # --------- TEMAS (30) ---------
 def make_theme(i: int) -> dict:
-    rarity = "common"
-    if 13 <= i <= 18: rarity = "rare"
-    elif 19 <= i <= 27: rarity = "epic"
-    elif i >= 28: rarity = "legendary"
+    # Nova distribuição: 1-12 comum | 13-21 raro | 22-27 épico | 28-30 lendário
+    if   i <= 12:  rarity = "common"
+    elif i <= 21:  rarity = "rare"
+    elif i <= 27:  rarity = "epic"
+    else:          rarity = "legendary"
 
-    h = (i * 19) % 360
-    p0 = hsl_to_hex(h, 85, 58 if rarity == "legendary" else 55)
-    p1 = hsl_to_hex((h + 210) % 360, 70, 14)
-    palette = [p0, hsl_to_hex((h + 180) % 360, 75, 18)] if rarity == "legendary" else [p0, p1]
+    h = (i * 23) % 360
+    
+    if rarity == "common":
+        # Paleta simples mas bonita
+        p0 = hsl_to_hex(h, 75, 58)
+        p1 = hsl_to_hex((h + 200) % 360, 65, 15)
+        bg_effect = "solid"
+        timer_reactive = False
+        celebrate = False
+        ambient_particles = False
+    elif rarity == "rare":
+        # Gradientes animados
+        p0 = hsl_to_hex(h, 82, 55)
+        p1 = hsl_to_hex((h + 180) % 360, 72, 16)
+        bg_effect = "animated-gradient"
+        timer_reactive = False
+        celebrate = False
+        ambient_particles = False
+    elif rarity == "epic":
+        # Reativo ao timer
+        p0 = hsl_to_hex(h, 88, 52)
+        p1 = hsl_to_hex((h + 170) % 360, 78, 17)
+        bg_effect = "dynamic-gradient"
+        timer_reactive = True  # cor muda conforme progresso
+        celebrate = False
+        ambient_particles = True  # partículas ambiente
+    else:  # legendary
+        # Parallax + celebrações
+        p0 = hsl_to_hex(h, 92, 50)
+        p1 = hsl_to_hex((h + 160) % 360, 85, 18)
+        bg_effect = "parallax-nebula"
+        timer_reactive = True
+        celebrate = True  # fogos quando completa sessão
+        ambient_particles = True
+
+    palette = [p0, p1, hsl_to_hex((h + 90) % 360, 70, 22)]
 
     return {
         "id": f"theme_{i}",
-        "name": f"Tema {i}",
+        "name": f"Tema {'Cosmic' if rarity=='legendary' else ('Epic' if rarity=='epic' else ('Rare' if rarity=='rare' else 'Classic'))} #{i}",
         "item_type": "theme",
         "rarity": rarity,
-        "price": price_curve(i, 30, 100, 5500, 2.25),
-        "level_required": level_curve(i, 30, 22),
+        # Nova curva: comum 100-1000, raro 3000-9000, épico 12000-25000, lendário 30000-60000
+        "price": price_curve(i, 30, 100, 60000, 2.9),
+        "level_required": level_curve(i, 30, 25),
         "effects": {
-            "palette": palette,            # usado nos previews + applyThemeEffects
-            "bg": "parallax" if rarity == "legendary" else ("cycle-reactive" if rarity == "epic" else "solid"),
-            "celebrate_milestones": True if rarity == "legendary" else False,
+            "palette": palette,
+            "bg_effect": bg_effect,
+            "timer_reactive": timer_reactive,
+            "celebrate_milestones": celebrate,
+            "ambient_particles": ambient_particles,
         },
         "perks": {},
     }
