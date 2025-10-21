@@ -16,6 +16,14 @@ import {
  } from "@/lib/siteStyle";
 import SealAvatar from "@/components/SealAvatar";
 
+/* CSS inline para animações */
+const shopStyles = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+
 /* ---------- helpers de chamadas ---------- */
 async function getAnyShopList(apiClient) {
   const endpoints = ["/shop/list", "/shop/items", "/shop", "/shop/all"];
@@ -88,13 +96,13 @@ const themeFromId = (id) => {
 const ThemePreview = ({ palette }) => {
   const [p0, p1] = palette || [];
   return (
-    <div className="mx-auto w-28 rounded-lg overflow-hidden" style={{ border: "1px solid var(--app-border)" }}>
-      <div className="h-3" style={{ background: p0 || "#0ea5e9" }} />
-      <div className="px-1 py-1" style={{ background: p1 || "#0b1020" }}>
-        <div className="h-8 rounded mb-1" style={{ background: "rgba(255,255,255,.06)" }} />
+    <div className="mx-auto w-28 h-20 rounded-lg overflow-hidden" style={{ border: "1px solid var(--app-border)" }}>
+      <div className="h-6" style={{ background: p0 || "#0ea5e9" }} />
+      <div className="px-2 py-2 h-14" style={{ background: p1 || "#0b1020" }}>
+        <div className="h-6 rounded mb-1" style={{ background: "rgba(255,255,255,.08)" }} />
         <div className="flex gap-1">
-          <div className="h-2 flex-1 rounded" style={{ background: p0 || "#0ea5e9" }} />
-          <div className="h-2 w-6 rounded"  style={{ background: p0 || "#0ea5e9" }} />
+          <div className="h-3 flex-1 rounded" style={{ background: p0 || "#0ea5e9" }} />
+          <div className="h-3 w-8 rounded"  style={{ background: p0 || "#0ea5e9" }} />
         </div>
       </div>
     </div>
@@ -104,13 +112,39 @@ const ThemePreview = ({ palette }) => {
 const borderPresetFromId = () => ({ radius: 16, width: 2, color: "rgba(148,163,184,.35)", glow: "0 0 0 rgba(0,0,0,0)" });
 const BorderPreview = ({ effects }) => {
   const thick = effects?.thickness ?? 2;
+  const animated = effects?.animated;
+  
+  // Gera cor baseada no estilo de animação
+  const getBorderColor = () => {
+    if (!animated || animated === "none") return "rgba(148,163,184,.5)";
+    if (animated === "rainbow") return "#06b6d4";
+    if (animated === "pulse-rainbow") return "#a78bfa";
+    if (animated === "prismatic") return "#f59e0b";
+    return "rgba(148,163,184,.5)";
+  };
+  
   return (
-    <div className="mx-auto w-28 h-16 rounded-xl relative overflow-hidden"
-         style={{ background: "var(--surface)", border: `${thick}px solid var(--app-border)` }}>
-      {/* Indicador sutil de que é animada (o brilho real vem do hover global) */}
-      {effects?.animated && (
+    <div className="mx-auto w-28 h-20 rounded-xl relative overflow-hidden flex items-center justify-center"
+         style={{ 
+           background: "linear-gradient(135deg, rgba(15,23,42,.8), rgba(30,41,59,.9))",
+           border: `${thick}px solid ${getBorderColor()}`,
+           boxShadow: animated && animated !== "none" ? `0 0 12px ${getBorderColor()}40` : "none"
+         }}>
+      {/* Conteúdo de exemplo dentro da borda */}
+      <div className="space-y-1 w-20">
+        <div className="h-2 rounded-full" style={{ background: "rgba(255,255,255,.15)" }} />
+        <div className="h-2 w-16 rounded-full" style={{ background: "rgba(255,255,255,.10)" }} />
+        <div className="h-2 w-12 rounded-full" style={{ background: "rgba(255,255,255,.08)" }} />
+      </div>
+      
+      {/* Indicador de animação */}
+      {animated && animated !== "none" && (
         <div className="absolute inset-0 pointer-events-none"
-             style={{ background: "conic-gradient(from 0deg, rgba(255,255,255,.08), transparent 40%, rgba(255,255,255,.08))", mixBlendMode:"overlay" }} />
+             style={{ 
+               background: "conic-gradient(from 0deg, rgba(255,255,255,.05), transparent 40%, rgba(255,255,255,.05))", 
+               mixBlendMode:"overlay",
+               animation: "spin 4s linear infinite"
+             }} />
       )}
     </div>
   );
@@ -273,6 +307,7 @@ function restoreEquipped(equipped) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900" style={{ fontFamily: "Inter, sans-serif" }}>
+      <style>{shopStyles}</style>
       <Header user={user} />
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center gap-4 mb-8">

@@ -2775,7 +2775,7 @@ def hsl_to_hex(h, s=70, l=50):
     r = round((r+m)*255); g = round((g+m)*255); b = round((b+m)*255)
     return f"#{(1<<24 | r<<16 | g<<8 | b):06x}"[1:]
 
-def price_curve(i, total):
+def price_curve_simple(i, total):
     if total <= 1: return 50
     t = i / (total - 1)
     curved = pow(t, 2.2)
@@ -2811,7 +2811,7 @@ def build_seals():
         out.append({
             "id": f"seal_{i+1}", "name": f"Selo {i+1}",
             "item_type": "seal", "rarity": rarity,
-            "price": price_curve(i, total),
+            "price": price_curve_simple(i, total),
             "level_required": 1 + i//3,
             "effects": {"avatar_style": avatar_style}
         })
@@ -2829,7 +2829,7 @@ def build_borders():
         out.append({
             "id": f"border_{i+1}", "name": f"Borda {i+1}",
             "item_type": "border", "rarity": rarity,
-            "price": price_curve(i, total),
+            "price": price_curve_simple(i, total),
             "level_required": 1 + i//3,
             "effects": { "thickness": thickness, "animated": animated, "accent_color_sync": rarity != "common" }
         })
@@ -2848,7 +2848,7 @@ def build_themes():
         out.append({
             "id": f"theme_{i+1}", "name": f"Tema {i+1}",
             "item_type": "theme", "rarity": rarity,
-            "price": price_curve(i, total),
+            "price": price_curve_simple(i, total),
             "level_required": 1 + i//3,
             "effects": {
                 "palette": [accent, surface],
