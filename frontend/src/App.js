@@ -1,4 +1,4 @@
-// frontend/src/pages/App.js
+// frontend/src/App.js
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -8,57 +8,105 @@ import Shop from "./pages/Shop";
 import Settings from "./pages/Settings";
 import Friends from "./pages/Friends";
 import NicknameSetup from "./pages/NicknameSetup";
+import Agenda from "./pages/Agenda";
+import Rankings from "./pages/Rankings";
+import Groups from "./pages/Groups";
+import GroupView from "./pages/GroupView";
 import { Toaster } from "./components/ui/sonner";
 import "@/App.css";
+import { bootApply } from "@/lib/siteStyle";
+import { presenceOpen, presencePing, presenceLeave } from "@/lib/friends";
+
+/* ---------------- Auth / Guard ---------------- */
 
 function AuthHandler() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isChecking, setIsChecking] = useState(true);
 
+  const [checking, setChecking] = useState(true);
+  const [user, setUser] = useState(null);
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  // carrega /auth/me e faz o roteamento protegido
   useEffect(() => {
     let alive = true;
-
-    async function check() {
+    (async () => {
       try {
-        // 1) Checa se está autenticado (cookie HttpOnly)
-        const res = await api.get("/auth/me"); // << sem concatenar /api
-        const user = res.data?.user;
+        const r = await api.get("/auth/me").catch(() => ({ data: null }));
+        const u = r?.data?.user ?? r?.data ?? null;
 
-        // 2) Se está na landing ("/"), decide pra onde ir
-        if (location.pathname === "/") {
-          if (!user?.nickname || !user?.tag) {
-            navigate("/setup", { replace: true });
-          } else {
-            navigate("/dashboard", { replace: true });
-          }
-        } else if (location.pathname !== "/setup" && (!user?.nickname || !user?.tag)) {
-          // Se tentou entrar em outra rota sem nickname/tag, manda pra setup
-          navigate("/setup", { replace: true });
+        // header p/ chamadas que precisam de bearer simples
+        if (u?.id) {
+          api.defaults.headers.common["Authorization"] = `Bearer ${u.id}`;
+        } else {
+          delete api.defaults.headers.common["Authorization"];
         }
-      } catch (err) {
-        // Não autenticado
-        if (location.pathname !== "/") {
-          navigate("/", { replace: true });
+
+        setUser(u);
+        setIsAuthed(!!u?.id);
+
+        // rotas
+        const path = location.pathname;
+        const hasNick = !!(u?.nickname && u?.tag);
+
+        if (path === "/") {
+          if (u?.id) navigate("/dashboard", { replace: true });
+        } else if (path === "/setup") {
+          if (!u?.id) navigate("/", { replace: true });
+          if (u?.id && hasNick) navigate("/dashboard", { replace: true });
+        } else {
+          if (!u?.id) navigate("/", { replace: true });
         }
       } finally {
-        if (alive) setIsChecking(false);
+        if (alive) setChecking(false);
       }
-    }
-
-    check();
+    })();
     return () => { alive = false; };
-  }, [navigate, location]);
+  }, [location.pathname, navigate]);
 
-  if (isChecking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900">
-        <div className="text-xl font-medium text-white">Carregando...</div>
-      </div>
-    );
-  }
-  return null;
+  // aplica tema/borda equipados (se houver)
+  useEffect(() => {
+    if (!user?.equipped_items) return;
+    const { theme, border } = user.equipped_items;
+    bootApply({
+      themeId: theme?.id ?? theme,
+      borderId: border?.id ?? border,
+      themeEffects: theme?.effects,
+      borderEffects: border?.effects,
+    });
+  }, [user]);
+
+  // presença apenas quando logado
+  useEffect(() => {
+    if (!isAuthed) return;
+    presenceOpen().catch(() => {});
+    const t = setInterval(() => presencePing(false), 60_000);
+    const mark = () => presencePing(true);
+    window.addEventListener("click", mark);
+    window.addEventListener("keydown", mark);
+    window.addEventListener("scroll", mark);
+    presencePing(false);
+
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("click", mark);
+      window.removeEventListener("keydown", mark);
+      window.removeEventListener("scroll", mark);
+      try {
+        const url = `${api.defaults.baseURL}/presence/leave`;
+        const body = new Blob([JSON.stringify({})], { type: "application/json" });
+        navigator.sendBeacon?.(url, body);
+      } catch {
+        presenceLeave().catch(() => {});
+      }
+    };
+  }, [isAuthed]);
+
+  if (checking) return null; // splash/loader opcional
+  return null;               // não renderiza UI — só guarda e efeitos globais
 }
+
+/* ---------------- App ---------------- */
 
 export default function App() {
   return (
@@ -69,9 +117,13 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/setup" element={<NicknameSetup />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/rankings" element={<Rankings />} />
+          <Route path="/grupos" element={<Groups />} />
+          <Route path="/grupos/:id" element={<GroupView />} />
           <Route path="/loja" element={<Shop />} />
           <Route path="/configuracoes" element={<Settings />} />
           <Route path="/amigos" element={<Friends />} />
+          <Route path="/agenda" element={<Agenda />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />

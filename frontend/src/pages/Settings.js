@@ -9,87 +9,93 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { ArrowLeft, Settings as SettingsIcon } from 'lucide-react';
 import Header from '../components/Header';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
-const API = `${BACKEND_URL}/api`;
-
 export default function Settings() {
   const navigate = useNavigate();
+
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState({ study_duration: 50, break_duration: 10 });
+
   const [nickname, setNickname] = useState('');
   const [tag, setTag] = useState('');
+
   const [canChangeNickname, setCanChangeNickname] = useState(true);
   const [daysUntilChange, setDaysUntilChange] = useState(0);
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    let alive = true;
 
+    async function loadData() {
+      try {
+        const [userRes, settingsRes] = await Promise.all([
+          api.get('/auth/me'),
+          api.get('/settings'),
+        ]);
 
-useEffect(() => {
-  api.get('/auth/me')
-    .then(r => {
-      const u = r.data?.user || {};
-      setNickname(u.nickname || '');
-      setTag(u.tag || '');
-    })
-    .catch(() => {/* deixa vazio mesmo */});
-}, []);
+        // compat: funciona se o backend mandar { user: {...} } OU {...}
+       const u = userRes.data || null;
 
+        if (!alive) return;
 
-  const loadData = async () => {
-    try {
-      const [userRes, settingsRes] = await Promise.all([
-   api.get('/auth/me'),
-   api.get('/settings'),
- ]);
-      
-      const u = userRes.data?.user || null;
-      setUser(u);
-      setSettings(settingsRes.data || { study_duration: 50, break_duration: 10 });
-      setNickname(u?.nickname || '');
-      setTag(u?.tag || '');
+        setUser(u);
 
-      // Check if can change nickname
-      if (userRes.data.last_nickname_change) {
-        const lastChange = new Date(userRes.data.last_nickname_change);
-        const now = new Date();
-        const daysSince = Math.floor((now - lastChange) / (1000 * 60 * 60 * 24));
-        if (daysSince < 60) {
-          setCanChangeNickname(false);
-          setDaysUntilChange(60 - daysSince);
+        setSettings({
+          study_duration: Number(settingsRes?.data?.study_duration ?? 50),
+          break_duration: Number(settingsRes?.data?.break_duration ?? 10),
+        });
+
+        setNickname(u?.nickname ?? '');
+        setTag(u?.tag ?? '');
+
+        if (u?.last_nickname_change) {
+          const lastChange = new Date(u.last_nickname_change);
+          const now = new Date();
+          const daysSince = Math.floor((now - lastChange) / (1000 * 60 * 60 * 24));
+          if (daysSince < 60) {
+            setCanChangeNickname(false);
+            setDaysUntilChange(60 - daysSince);
+          }
         }
+      } catch (error) {
+        if (error?.response?.status === 401) {
+          navigate('/', { replace: true });
+          return;
+        }
+        toast.error(error?.response?.data?.detail || 'Falha ao carregar configurações');
+      } finally {
+        if (alive) setLoading(false);
       }
-    } catch (error) {
-      if (error.response?.status === 401) {
-        navigate('/');
-      }
-    } finally {
-      setLoading(false);
     }
-  };
 
-  const handleSaveSettings = async () => {
+    loadData();
+    return () => { alive = false; };
+  }, [navigate]);
+
+  async function handleSaveSettings() {
     try {
-      await api.post('/settings', settings);
+      // Se o seu backend usa PATCH, troque para api.patch('/settings', settings)
+      await api.post('/settings', {
+        study_duration: Number(settings.study_duration),
+        break_duration: Number(settings.break_duration),
+      });
       toast.success('Configurações salvas!');
     } catch (error) {
-      toast.error('Erro ao salvar configurações');
+      toast.error(error?.response?.data?.detail || 'Erro ao salvar configurações');
     }
-  };
+  }
 
-  const handleChangeNickname = async () => {
+  async function handleChangeNickname() {
     try {
       await api.post('/user/nickname', { nickname, tag });
       toast.success('Nickname#tag atualizado!');
-      loadData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Erro ao atualizar nickname#tag');
+      toast.error(error?.response?.data?.detail || 'Erro ao atualizar nickname#tag');
     }
-  };
+  }
 
-  if (loading || !user) {
+  // **IMPORTANTE**: não bloqueie pelo "!user", só pelo loading.
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900 flex items-center justify-center">
         <div className="text-xl text-white">Carregando...</div>
@@ -100,7 +106,7 @@ useEffect(() => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900" style={{ fontFamily: 'Inter, sans-serif' }}>
       <Header user={user} />
-      
+
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="flex items-center gap-4 mb-8">
           <Button
@@ -151,8 +157,13 @@ useEffect(() => {
                 />
               </div>
               <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-3">
-                <p className="text-cyan-300 font-semibold">{nickname}#{tag}</p>
-              </div>
+  <p className="text-cyan-300 font-semibold">
+    {(nickname && tag)
+      ? `${nickname}#${tag}`
+      : (user?.nickname && user?.tag ? `${user.nickname}#${user.tag}` : 'nick#tag')}
+  </p>
+</div>
+
               <Button
                 onClick={handleChangeNickname}
                 disabled={!canChangeNickname}
@@ -177,7 +188,7 @@ useEffect(() => {
                 <Input
                   type="number"
                   value={settings.study_duration}
-                  onChange={(e) => setSettings({ ...settings, study_duration: parseInt(e.target.value) })}
+                  onChange={(e) => setSettings({ ...settings, study_duration: Number(e.target.value) })}
                   min={1}
                   max={120}
                   className="bg-slate-700 border-slate-600 text-white"
@@ -188,7 +199,7 @@ useEffect(() => {
                 <Input
                   type="number"
                   value={settings.break_duration}
-                  onChange={(e) => setSettings({ ...settings, break_duration: parseInt(e.target.value) })}
+                  onChange={(e) => setSettings({ ...settings, break_duration: Number(e.target.value) })}
                   min={1}
                   max={60}
                   className="bg-slate-700 border-slate-600 text-white"

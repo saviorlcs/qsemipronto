@@ -1,98 +1,146 @@
+// frontend/src/context/CycleContext.jsx
 import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
 const Ctx = createContext(null);
 export const useCycle = () => useContext(Ctx);
 
-/**
- * Guarda o assunto ativo, a fila de blocos do assunto atual
- * e funções de controle que tanto o botão pequeno (na lista)
- * quanto os botões GRANDES vão usar em comum.
- */
 export function CycleProvider({ children }) {
-  const [activeSubject, setActiveSubject] = useState(null);      // {id, name, time_goal, ...}
-  const [isRunning, setIsRunning] = useState(false);
-  const [currentBlockMinutes, setCurrentBlockMinutes] = useState(50); // 50/10 padrão
-  const sessionIdRef = useRef(null);
+  // ---- TIMER (novo) ----
+  const [status, setStatus] = useState("idle"); // "idle" | "running" | "paused"
+  const [remainingMs, setRemainingMs] = useState(0);
+  const timerRef = useRef(null);
 
-  // “desconto” visual de progresso (ponto 2)
-  const [cycleOverrides, setCycleOverrides] = useState({}); // { [subjectId]: minutesToSubtract }
+  const clearTimer = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+  };
+
+  const tick = () => {
+    setRemainingMs((prev) => {
+      const next = Math.max(0, prev - 1000);
+      if (next <= 0) {
+        clearTimer();
+        setStatus("idle");
+      }
+      return next;
+    });
+  };
+
+  function startTimer(ms) {
+    clearTimer();
+    setRemainingMs(ms);
+    setStatus("running");
+    timerRef.current = setInterval(tick, 1000);
+  }
+  function pauseTimer() {
+    if (status !== "running") return;
+    clearTimer();
+    setStatus("paused");
+  }
+  function resumeTimer() {
+    if (status !== "paused" || remainingMs <= 0) return;
+    clearTimer();
+    setStatus("running");
+    timerRef.current = setInterval(tick, 1000);
+  }
+
+  // ---- ESTUDO (seu modelo antigo, mantido) ----
+  const [activeSubject, setActiveSubject] = useState(null); // {id,name,...}
+  const [currentBlockMinutes, setCurrentBlockMinutes] = useState(50); // 50/10
+  const sessionIdRef = useRef(null);
+  const [cycleOverrides, setCycleOverrides] = useState({}); // { [subjectId]: minutosDescontados }
 
   async function startSubject(subject) {
-    // evita start duplo
-    if (isRunning && activeSubject?.id === subject.id) return;
+    // evita start duplicado
+    if (activeSubject?.id === subject.id && (status === "running" || status === "paused")) return;
 
     setActiveSubject(subject);
-    setIsRunning(true);
     setCurrentBlockMinutes(50);
 
-    // abre sessão no backend
-    const r = await api.post("/study/start", { subject_id: subject.id });
-    sessionIdRef.current = r.data.id;
+    // abre sessão no backend (se der erro, só ignora)
+    try {
+      const r = await api.post("/study/start", { subject_id: subject.id });
+      sessionIdRef.current = r.data?.id ?? null;
+    } catch {}
   }
 
-  async function endCurrentBlock({ skipped = false, minutes = currentBlockMinutes }) {
-    if (!sessionIdRef.current) return;
-
-    await api.post("/study/end", {
-      session_id: sessionIdRef.current,
-      duration: minutes,
-      skipped
-    });
-
-    // prepara próxima sessão (mesmo assunto)
+  async function endCurrentBlock({ skipped = false, minutes = currentBlockMinutes } = {}) {
+    if (sessionIdRef.current) {
+      try {
+        await api.post("/study/end", { session_id: sessionIdRef.current, duration: minutes, skipped });
+      } catch {}
+    }
     sessionIdRef.current = null;
-    setIsRunning(false);
+    clearTimer();
+    setStatus("idle");
+    setRemainingMs(0);
   }
 
-  /** pula o bloco atual (marca como skipped, não dá coins/xp) */
+  /** PULAR BLOCO — funciona mesmo parado */
   async function skipBlock() {
-    await endCurrentBlock({ skipped: true, minutes: 0 });
+    // para o timer se estiver rodando
+    clearTimer();
+    setStatus("idle");
+
+    // se tinha sessão aberta, encerra como pulada (sem contar)
+    if (sessionIdRef.current) {
+      try {
+        await api.post("/study/end", { session_id: sessionIdRef.current, duration: 0, skipped: true });
+      } catch {}
+      sessionIdRef.current = null;
+    }
+
+    // prepara o próximo bloco (deixa parado; se quiser, chame startTimer abaixo)
+    setRemainingMs(currentBlockMinutes * 60 * 1000);
   }
 
-  /**
-   * volta um bloco:
-   * - PARA O UI do ciclo a gente “desconta” o progresso do assunto
-   * - NÃO mexemos em coins/xp (ponto 2)
-   */
+  /** VOLTAR 1 bloco (apenas visual) */
   function prevBlock() {
     if (!activeSubject) return;
     setCycleOverrides((old) => {
       const m = Math.max(0, (old[activeSubject.id] || 0) + currentBlockMinutes);
       return { ...old, [activeSubject.id]: m };
     });
-    // visualmente paramos o timer
-    setIsRunning(false);
+    clearTimer();
+    setStatus("idle");
     sessionIdRef.current = null;
   }
 
-  /** reseta só o bloco atual (para e zera timer) */
   function resetBlock() {
-    setIsRunning(false);
+    clearTimer();
+    setStatus("idle");
     sessionIdRef.current = null;
+    setRemainingMs(currentBlockMinutes * 60 * 1000);
   }
 
-  /** reseta TODO ciclo (remove overrides visuais) */
   function resetCycle() {
+    clearTimer();
+    setStatus("idle");
     setCycleOverrides({});
-    setIsRunning(false);
     sessionIdRef.current = null;
   }
 
   const value = useMemo(
     () => ({
+      // timer API (usada no Dashboard)
+      status,
+      remainingMs,
+      startTimer,
+      pauseTimer,
+      resumeTimer,
+      skipBlock,
+      // estudo / compat
       activeSubject,
-      isRunning,
       currentBlockMinutes,
       cycleOverrides,
       startSubject,
       endCurrentBlock,
-      skipBlock,
       prevBlock,
       resetBlock,
       resetCycle,
     }),
-    [activeSubject, isRunning, currentBlockMinutes, cycleOverrides]
+    [status, remainingMs, activeSubject, currentBlockMinutes, cycleOverrides]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

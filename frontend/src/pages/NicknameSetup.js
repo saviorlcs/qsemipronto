@@ -1,35 +1,66 @@
 // frontend/src/pages/NicknameSetup.js
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';
-import { toast } from 'sonner';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "../lib/api";
+import { toast } from "sonner";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 
 export default function NicknameSetup() {
   const navigate = useNavigate();
-  const [nickname, setNickname] = useState('');
-  const [tag, setTag] = useState('');
+  const [nickname, setNickname] = useState("");
+  const [tag, setTag] = useState("");
   const [isChecking, setIsChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    try {
+      await api.get("/auth/me");   // 200 = logado
+      if (!alive) return;
+      navigate("/dashboard", { replace: true });
+    } catch {
+      // não logado -> permanece no /setup
+    }
+  })();
+  return () => { alive = false; };
+}, [navigate]);
 
-  const validateNickname = (v) => /^[a-zA-Z0-9]{4,16}$/.test(v);
-  const validateTag = (v) => /^[a-zA-Z0-9]{3,4}$/.test(v);
+  // ❗️Se já estiver logado, NÃO deixa ficar no /setup
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        await api.get("/auth/me"); // 200 = logado
+        if (!alive) return;
+        navigate("/dashboard", { replace: true });
+      } catch {
+        // não logado -> permanece no /setup
+      }
+    })();
+    return () => { alive = false; };
+  }, [navigate]);
+
+  const validateNickname = (v) => /^[A-Za-z0-9]{4,16}$/.test(v);
+  const validateTag = (v) => /^[A-Za-z0-9]{3,4}$/.test(v);
 
   const checkAvailability = async () => {
-    if (!validateNickname(nickname)) return toast.error('Nickname deve ter 4-16 caracteres alfanuméricos');
-    if (!validateTag(tag)) return toast.error('Tag deve ter 3-4 caracteres alfanuméricos');
+    const n = nickname.trim();
+    const t = tag.trim();
+    if (!validateNickname(n)) return toast.error("Nickname deve ter 4-16 caracteres alfanuméricos");
+    if (!validateTag(t)) return toast.error("Tag deve ter 3-4 caracteres alfanuméricos");
 
     setIsChecking(true);
     try {
-      const res = await api.get('/user/nickname/check', { params: { nickname, tag } });
-      res.data.available
-        ? toast.success('Este nickname#tag está disponível!')
-        : toast.error(res.data.reason || 'Este nickname#tag já está em uso');
+      const res = await api.get("/user/nickname/check", { params: { nickname: n, tag: t } });
+      res.data?.available
+        ? toast.success("Este nickname#tag está disponível!")
+        : toast.error(res.data?.reason || "Este nickname#tag já está em uso");
     } catch {
-      toast.error('Erro ao verificar disponibilidade');
+      toast.error("Erro ao verificar disponibilidade");
     } finally {
       setIsChecking(false);
     }
@@ -37,16 +68,19 @@ export default function NicknameSetup() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateNickname(nickname)) return toast.error('Nickname deve ter 4-16 caracteres alfanuméricos');
-    if (!validateTag(tag)) return toast.error('Tag deve ter 3-4 caracteres alfanuméricos');
+    const n = nickname.trim();
+    const t = tag.trim();
+    if (!validateNickname(n)) return toast.error("Nickname deve ter 4-16 caracteres alfanuméricos");
+    if (!validateTag(t)) return toast.error("Tag deve ter 3-4 caracteres alfanuméricos");
 
     setIsSubmitting(true);
     try {
-      await api.post('/user/nickname', { nickname, tag });
-      toast.success('Nickname#tag criado com sucesso!');
-      navigate('/dashboard');
+      await api.post("/user/nickname", { nickname: n, tag: t });
+      // Depois de criar, manda direto pro dashboard
+      toast.success(`Nickname criado: ${n}#${t}`);
+      navigate("/dashboard", { replace: true });
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Erro ao criar nickname#tag');
+      toast.error(error?.response?.data?.detail || "Erro ao criar nickname#tag");
     } finally {
       setIsSubmitting(false);
     }
@@ -56,7 +90,7 @@ export default function NicknameSetup() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-slate-900 flex items-center justify-center p-4">
       <Card className="w-full max-w-md bg-slate-800/50 backdrop-blur border-slate-700">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold text-white" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+          <CardTitle className="text-3xl font-bold text-white" style={{ fontFamily: "Space Grotesk, sans-serif" }}>
             Bem-vindo ao CicloStudy!
           </CardTitle>
           <CardDescription className="text-gray-400 mt-2">
@@ -69,7 +103,7 @@ export default function NicknameSetup() {
               <Label className="text-gray-300 mb-2 block">Nickname</Label>
               <Input
                 value={nickname}
-                onChange={(e) => setNickname(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+                onChange={(e) => setNickname(e.target.value.replace(/[^A-Za-z0-9]/g, ""))}
                 placeholder="4-16 caracteres"
                 maxLength={16}
                 className="bg-slate-700 border-slate-600 text-white"
@@ -81,7 +115,7 @@ export default function NicknameSetup() {
               <Label className="text-gray-300 mb-2 block">Tag</Label>
               <Input
                 value={tag}
-                onChange={(e) => setTag(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+                onChange={(e) => setTag(e.target.value.replace(/[^A-Za-z0-9]/g, ""))}
                 placeholder="3-4 caracteres"
                 maxLength={4}
                 className="bg-slate-700 border-slate-600 text-white"
@@ -91,7 +125,7 @@ export default function NicknameSetup() {
 
             <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4">
               <p className="text-sm text-cyan-300 text-center font-semibold">
-                {nickname && tag ? `${nickname}#${tag}` : 'seu_nickname#tag'}
+                {nickname && tag ? `${nickname}#${tag}` : "seu_nickname#tag"}
               </p>
             </div>
 
@@ -102,7 +136,7 @@ export default function NicknameSetup() {
                 disabled={!nickname || !tag || isChecking}
                 className="flex-1 bg-slate-700 hover:bg-slate-600 text-white"
               >
-                {isChecking ? 'Verificando...' : 'Verificar'}
+                {isChecking ? "Verificando..." : "Verificar"}
               </Button>
 
               <Button
@@ -110,7 +144,7 @@ export default function NicknameSetup() {
                 disabled={!nickname || !tag || isSubmitting}
                 className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white"
               >
-                {isSubmitting ? 'Criando...' : 'Criar'}
+                {isSubmitting ? "Criando..." : "Criar"}
               </Button>
             </div>
           </form>
