@@ -256,7 +256,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL")],  # http://127.0.0.1:3000 (ou localhost)
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -470,10 +470,11 @@ def make_cookie(response: RedirectResponse | JSONResponse, token: str):
         "session_token",
         token,
         max_age=60*60*24*30,
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="none" if COOKIE_SECURE else "lax",
+        httponly=False,  # Permitir acesso via JS em desenvolvimento
+        secure=False,  # Sem HTTPS em desenvolvimento
+        samesite="lax",
         path="/",
+        domain="localhost",  # Cookie compartilhado entre portas
     )
 from datetime import datetime, timezone
 
