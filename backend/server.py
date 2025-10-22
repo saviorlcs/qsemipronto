@@ -245,8 +245,8 @@ def generate_weekly_quests(user, subjects):
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:3000")
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 SESSION_TTL_DAYS = 30
@@ -541,8 +541,16 @@ def _to_aware(dt):
 
 @api_router.get("/auth/google/login")
 async def google_login(request: Request):
-    # gera state e grava num cookie simples
+    # gera state e grava tanto no cookie quanto no banco (dupla segurança)
     state = secrets.token_urlsafe(24)
+    
+    # salva no banco com TTL de 10 minutos
+    await db.oauth_states.insert_one({
+        "state": state,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10)
+    })
+    
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": f"{BACKEND_URL}/api/auth/google/callback",
@@ -556,6 +564,7 @@ async def google_login(request: Request):
     from urllib.parse import urlencode
     url = f"{GOOGLE_AUTH}?{urlencode(params)}"
     resp = RedirectResponse(url, status_code=302)
+    # cookie como fallback
     resp.set_cookie("oauth_state", state, max_age=600, httponly=True, samesite="lax", path="/")
     return resp
 
@@ -597,8 +606,29 @@ async def study_timer_state(body: TimerStateBody, request: Request, session_toke
 
 @api_router.get("/auth/google/callback")
 async def google_callback(request: Request, code: str | None = None, state: str | None = None, oauth_state: str | None = Cookie(None)):
-    if not code or not state or not oauth_state or state != oauth_state:
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+    
+    # verifica state: primeiro tenta cookie, depois banco de dados
+    state_valid = False
+    
+    # tenta validar via cookie (compatibilidade)
+    if oauth_state and state == oauth_state:
+        state_valid = True
+    else:
+        # valida via banco de dados (mais robusto)
+        db_state = await db.oauth_states.find_one({
+            "state": state,
+            "expires_at": {"$gt": datetime.now(timezone.utc)}
+        })
+        if db_state:
+            state_valid = True
+            # limpa o state usado
+            await db.oauth_states.delete_one({"state": state})
+    
+    if not state_valid:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
+    
     # troca code por tokens
     async with httpx.AsyncClient(timeout=15) as client:
         token_res = await client.post(GOOGLE_TOKEN, data={
@@ -642,7 +672,7 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     resp = RedirectResponse(FRONTEND_URL, status_code=302)
     make_cookie(resp, token)
     
-    # limpa state
+    # limpa state cookie
     resp.delete_cookie("oauth_state", path="/")
     return resp
 

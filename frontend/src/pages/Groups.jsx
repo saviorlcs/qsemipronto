@@ -32,18 +32,17 @@ export default function Groups() {
       setLoading(false);
     }
   };
-  useEffect(() => { refresh(); }, []);
-useEffect(() => {
-  (async () => {
-    try {
-      const r = await api.get("/auth/me"); // força salvar backend_user_id via interceptor/step 2
-      if (r?.data?.id) localStorage.setItem("backend_user_id", r.data.id);
-      if (r?.data?.token) localStorage.setItem("backend_token", r.data.token);
-    } catch {}
-    refresh(); // só depois de tentar garantir identidade
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api.get("/auth/me");
+        if (r?.data?.id) localStorage.setItem("backend_user_id", r.data.id);
+        if (r?.data?.token) localStorage.setItem("backend_token", r.data.token);
+      } catch {}
+      refresh();
+    })();
+  }, []);
 
   const onCreate = async () => {
     if (!name.trim()) return toast.error("Dê um nome ao grupo");

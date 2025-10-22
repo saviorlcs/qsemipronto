@@ -6,7 +6,7 @@ import { Clock, Target, Trophy, BookOpen } from "lucide-react";
 
 function loginGoogle() {
   // Pega BACKEND do .env e remove o /api pra formar a base
-  const base = (process.env.REACT_APP_BACKEND_URL || "http://127.0.0.1:5000/api").replace("/api", "");
+  const base = (process.env.REACT_APP_BACKEND_URL || "http://localhost:5000/api").replace("/api", "");
   // Redireciona pro SEU backend (nada de Emergent)
   window.location.href = `${base}/api/auth/google/login`;
 }

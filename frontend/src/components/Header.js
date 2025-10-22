@@ -7,7 +7,7 @@ import { Trophy, ShoppingBag, Users, Settings, LogOut, ListOrdered } from "lucid
 import SealAvatar from "./SealAvatar";
 
 function loginGoogle() {
-  const root = (api?.defaults?.baseURL || (process.env.REACT_APP_BACKEND_URL || "http://127.0.0.1:5000"))
+  const root = (api?.defaults?.baseURL || (process.env.REACT_APP_BACKEND_URL || "http://localhost:5000"))
     .replace(/\/+$/, "")
     .replace(/\/api$/, "");
   window.location.href = `${root}/api/auth/google/login`;

@@ -21,7 +21,7 @@ function pickBackendURL() {
       ? (window.__BACKEND_URL__ || window.BACKEND_URL)
       : undefined;
 
-  const raw = globalUrl || viteUrl || craUrl || "http://127.0.0.1:5000";
+  const raw = globalUrl || viteUrl || craUrl || "http://localhost:5000";
   const base = raw.replace(/\/+$/, "");
   return base.endsWith("/api") ? base : `${base}/api`;
 }
