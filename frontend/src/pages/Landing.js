@@ -19,7 +19,7 @@ export default function Landing() {
     (async () => {
       try {
         const res = await api.get("/auth/me"); // chama seu backend
-        if (res.data?.authenticated) {
+        if (res.data?.user) {
           navigate("/dashboard");
         } else {
           setIsLoading(false);

@@ -476,11 +476,10 @@ def make_cookie(response: RedirectResponse | JSONResponse, token: str):
         "session_token",
         token,
         max_age=60*60*24*30,
-        httponly=False,  # Permitir acesso via JS em desenvolvimento
-        secure=False,  # Sem HTTPS em desenvolvimento
-        samesite="lax",
-        path="/",
-        domain="localhost",  # Cookie compartilhado entre portas
+        httponly=True,      # melhor segurança; o axios envia o cookie via withCredentials
+        secure=False,       # em dev (HTTP). Em produção: True + SameSite=None
+        samesite="Lax",     # ok para top-level redirect do Google
+        path="/",           # sem 'domain' no localhost
     )
 from datetime import datetime, timezone
 
@@ -676,7 +675,7 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     # JWT e cookie
     payload = {"sub": uid, "exp": datetime.now(timezone.utc) + timedelta(days=30)}
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-    resp = RedirectResponse(FRONTEND_URL, status_code=302)
+    resp = RedirectResponse(f"{FRONTEND_URL}/dashboard", status_code=302)
     make_cookie(resp, token)
     
     # limpa state cookie
