@@ -53,11 +53,12 @@ function AuthHandler() {
         const u = r?.data?.user ?? r?.data ?? null;
 
         // header p/ chamadas que precisam de bearer simples
-        if (u?.id) {
-          api.defaults.headers.common["Authorization"] = `Bearer ${u.id}`;
-        } else {
-          delete api.defaults.headers.common["Authorization"];
-        }
+        if (u?.token) {
+  api.defaults.headers.common["Authorization"] = `Bearer ${u.token}`;
+} else {
+  delete api.defaults.headers.common["Authorization"];
+}
+
 
         setUser(u);
         setIsAuthed(!!u?.id);

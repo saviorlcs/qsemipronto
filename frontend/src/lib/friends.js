@@ -19,9 +19,13 @@ export const rejectFriendRequest = (requestId) =>
 export const getFriendsPresence = () =>
   api.get("/friends/list").then(r => r.data);
 
-export const presenceOpen  = () => api.post("/presence/open");
-export const presenceLeave = () => api.post("/presence/leave").catch(() => {});
-export const presencePing  = (interaction = false) =>
+e// src/lib/friends.js (exemplo)
+import { api } from "@/lib/api";
+
+export const presenceOpen  = () => api.post("/presence/open",  {}, { withCredentials: true });
+export const presencePing  = (active=false) => api.post("/presence/ping",  { active }, { withCredentials: true });
+export const presenceLeave = () => api.post("/presence/leave", {}, { withCredentials: true });
+
   api.post("/presence/ping", { interaction }).catch(() => {});
 
 // Timer do usuário atual (para o backend saber seu estado)

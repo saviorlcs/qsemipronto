@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Cookie, Response, Request, Header
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -249,16 +249,17 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:3000")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000")
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+SESSION_TTL_DAYS = 30
 
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+    allow_origins=[os.getenv("FRONTEND_URL")],  # http://127.0.0.1:3000 (ou localhost)
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],   # <-- importante pro Authorization
+    allow_headers=["*"],
 )
 import secrets
 from fastapi.responses import JSONResponse
@@ -570,31 +571,24 @@ class TimerStateBody(BaseModel):
 async def study_timer_state(body: TimerStateBody, request: Request, session_token: Optional[str] = Cookie(None)):
     user = await get_current_user(request, session_token)
 
-    patch = {
-        "active_session.timer.state": body.state,
-        "active_session.timer.seconds_left": body.seconds_left,
-        "active_session.timer.updated_at": utcnow(),   # 👈 NOVO
-    }
-    # (opcional) se você também quiser atualizar a matéria aqui:
-    if body.subject_id:
-        patch["active_session.subject_id"] = body.subject_id
-
-    await db.users.update_one({"id": user.id}, {"$set": patch}, upsert=True)
-    return {"ok": True}
-
     update = {
-        "active_session.timer.state": payload.state,
+        "active_session.timer.state": body.state,
+        "active_session.timer.updated_at": utcnow(),
         "last_activity": datetime.now(timezone.utc).isoformat(),
     }
+    
+    # (opcional) se você também quiser atualizar a matéria aqui:
+    if body.subject_id:
+        update["active_session.subject_id"] = body.subject_id
 
-    if payload.state == "paused":
+    if body.state == "paused":
         # congela no backend
-        if payload.seconds_left is not None and payload.seconds_left >= 0:
-            update["active_session.timer.seconds_left"] = int(payload.seconds_left)
+        if body.seconds_left is not None and body.seconds_left >= 0:
+            update["active_session.timer.seconds_left"] = int(body.seconds_left)
         update["active_session.timer.phase_until"] = None
     else:
         # focus/break: ancora com hora absoluta
-        secs = max(0, int(payload.seconds_left or 0))
+        secs = max(0, int(body.seconds_left or 0))
         update["active_session.timer.seconds_left"] = secs
         update["active_session.timer.phase_until"] = (datetime.now(timezone.utc) + timedelta(seconds=secs)).isoformat()
 
@@ -649,12 +643,12 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     make_cookie(resp, token)
     # === CSRF: cookie não-HttpOnly para o front ler e mandar no header ===
     csrf = secrets.token_urlsafe(32)
-    resp.set_cookie(
-    "csrf_token", csrf,
-    max_age=60*60*24*30,
-    httponly=False,
-    secure=COOKIE_SECURE,
-    samesite="none" if COOKIE_SECURE else "lax",
+    response.set_cookie(
+    key="session_token",
+    value=jwt_token,
+    httponly=True,
+    samesite="lax",   # em HTTP no localhost, use Lax
+    secure=False,     # False no dev http
     path="/",
 )
 
@@ -677,32 +671,53 @@ group_members_col = db["group_members"]
 users_col = db["users"]
 
 # === PATCH: /auth/me (substituir função inteira) ===
+# substitua TUDO da função /auth/me por isso
 @api_router.get("/auth/me")
-async def auth_me(authorization: Optional[str] = Header(default=None)):
+async def auth_me(request: Request, session_token: Optional[str] = Cookie(None), authorization: Optional[str] = Header(default=None)):
     """
-    Versão tolerante: nunca retorna 401. Se tiver Authorization, devolve um usuário de dev.
-    Se não tiver, indica anônimo para o front redirecionar ao login.
+    Retorna o usuário logado a partir do cookie session_token (JWT).
+    Mantém caminho de DEV via Authorization: Bearer <qualquer_coisa>, se você usar.
+    Nunca retorna 401: devolve {"ok": False, "anon": True} quando não logado.
     """
     try:
+        # Caminho DEV opcional (mantém seu comportamento anterior)
         if authorization and authorization.lower().startswith("bearer "):
-            # Aqui você poderia validar o token de fato.
-            # Por enquanto, retorna um usuário fake só para destravar a UI.
             return {
                 "ok": True,
                 "user": {
-                    "uid": "dev-user",
-                    "nick": "savior",
+                    "id": "dev-user",
+                    "nickname": "savior",
                     "tag": "lcs",
                     "coins": 50,
                     "level": 6,
-                    "avatar": {"seal_id": None, "border_id": None, "theme_id": None},
+                    "equipped_items": {"seal": None, "border": None, "theme": None},
+                    "name": "Dev User",
                 },
             }
-        # Sem token -> 200 com anon
-        return {"ok": False, "anon": True}
+
+        # Caminho normal: usa cookie session_token
+        me = await get_current_user(request, session_token)
+        return {
+            "ok": True,
+            "user": {
+                "id": me.id,
+                "email": getattr(me, "email", None),
+                "name": getattr(me, "name", None),
+                "nickname": getattr(me, "nickname", None),
+                "tag": getattr(me, "tag", None),
+                "level": getattr(me, "level", 1),
+                "coins": getattr(me, "coins", 0),
+                "xp": getattr(me, "xp", 0),
+                "equipped_items": getattr(me, "equipped_items", {"seal": None, "border": None, "theme": None}),
+            },
+        }
+    except HTTPException as e:
+        if e.status_code == 401:
+            return {"ok": False, "anon": True}
+        raise
     except Exception:
-        # Nunca 401 aqui
         return {"ok": False, "anon": True}
+
 
 # === /PATCH ===
 
@@ -718,6 +733,18 @@ async def logout(request: Request, session_token: Optional[str] = Cookie(None)):
     resp.delete_cookie("csrf_token", path="/")
     return resp
 
+from fastapi import Depends, Request, Cookie, Header, HTTPException
+
+# Usa o mesmo mecanismo do /auth/me (cookie session_token) para recuperar o usuário
+async def require_user(request: Request, session_token: str | None = Cookie(default=None)):
+    # Se não tiver cookie, não está logado
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Reaproveite a sua função que valida o token e devolve o usuário:
+    me = await get_current_user(request, session_token)  # <- você já tem isso no projeto
+    if not me:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return me
 
 # Root Route
 @api_router.get("/")
@@ -1816,7 +1843,7 @@ async def groups_member_kick(group_id: str, user_id: str = Body(...), request: R
 
 
 @api_router.post("/presence/ping")
-async def presence_ping(body: PingBody, request: Request, session_token: Optional[str] = Cookie(None)):
+async def presence_ping(payload: dict, user = Depends(require_user)):
     me = await get_current_user(request, session_token)
     doc = await db.users.find_one({"id": me.id}, {"_id": 0}) or {"id": me.id}
     now = utcnow()
@@ -1825,7 +1852,7 @@ async def presence_ping(body: PingBody, request: Request, session_token: Optiona
         updates["last_interaction"] = now
     await db.users.update_one({"id": me.id}, {"$set": updates}, upsert=True)
     merged = {**doc, **updates}
-    return {"ok": True, "status": _presence_from_fields(merged), "tabs_open": int(merged.get("tabs_open") or 0)}
+    return {"ok": True}
 
 
 
@@ -1960,14 +1987,14 @@ async def friends_list(request: Request, session_token: Optional[str] = Cookie(N
 
 
 @api_router.post("/presence/leave")
-async def presence_leave(request: Request, session_token: Optional[str] = Cookie(None)):
+async def presence_leave(payload: dict, user = Depends(require_user)):
     me = await get_current_user(request, session_token)
     doc = await db.users.find_one({"id": me.id}, {"_id": 0}) or {"id": me.id}
     tabs = max(0, int(doc.get("tabs_open") or 0) - 1)
     updates = {"tabs_open": tabs, "last_activity": utcnow()}
     await db.users.update_one({"id": me.id}, {"$set": updates}, upsert=True)
     merged = {**doc, **updates}
-    return {"ok": True, "status": _presence_from_fields(merged), "tabs_open": tabs}
+    return {"ok": True}
 
 
 # Endpoint que seus amigos consomem (mantém status conforme regra acima)
@@ -2675,58 +2702,7 @@ def theme_effects(rarity: str, i: int) -> Dict[str, Any]:
 
 
 # ------------------------- SEED (90 ITENS) -------------------------
-def make_items() -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
-    # Ordem corrigida: comum, raro, épico, lendário
-    rarities = ["common", "rare", "epic", "legendary"]
-    type_names = [("seal","Selo"), ("border","Borda"), ("theme","Tema")]
-
-    for item_type, title in type_names:
-        idx = 0
-        for r in rarities:
-            n = RAR_DIST[r]
-            for j in range(n):
-                price = price_curve(j, n, r)
-                idx += 1
-                if item_type == "seal":
-                    effects = seal_effects(r, idx)
-                    desc = {
-                        "common":"Avatar personalizado único baseado no seu nick#tag com padrão geométrico e brilho sutil.",
-                        "rare":"Avatar NEON com partículas cintilantes, órbita animada e brilho intenso que se move! ✨",
-                        "epic":"Avatar RADIANTE com aura brilhante, pulsação hipnótica, trilha fluindo e partículas de poeira estelar! 🌟",
-                        "legendary":"Avatar CÓSMICO SUPREMO com galáxia de partículas, aura etérea, trilha de cometa, anéis prismáticos e efeitos holográficos! ✨🌌",
-                    }[r]
-                elif item_type == "border":
-                    effects = border_effects(r, idx)
-                    desc = {
-                        "common":"Borda elegante com brilho suave.",
-                        "rare":"Borda ANIMADA arco-íris que BRILHA e SE MOVE constantemente! 🌈",
-                        "epic":"Borda INTERATIVA que reage ao hover, com 3 camadas, pulsação rainbow e trilha de partículas! ⚡",
-                        "legendary":"Borda PRISMÁTICA HOLOGRÁFICA com 5 camadas, efeitos de canto cintilantes, partículas intensas e gradientes dinâmicos! 🌈✨",
-                    }[r]
-                else:
-                    effects = theme_effects(r, idx)
-                    desc = {
-                        "common":"Paleta de cores personalizada com fundo sólido.",
-                        "rare":"Tema com gradiente ANIMADO, efeitos ambientes e respiração suave! 🎨",
-                        "epic":"Tema REATIVO que muda durante focus/break, com parallax, partículas flutuantes e animação em onda! 🌊",
-                        "legendary":"Tema CÓSMICO com parallax em 4 camadas, campo de estrelas, nebulosa overlay, celebrações de milestones e sincronização com horário! 🌟🎆🌌",
-                    }[r]
-
-                items.append({
-                    "id": f"{item_type}_{r}_{idx}",
-                    "item_type": item_type,
-                    "name": f"{title} {r.title()} {idx}",
-                    "price": price,
-                    "rarity": r,
-                    "level_required": {"common":1,"rare":8,"epic":15,"legendary":25}[r],
-                    "tags": [item_type],
-                    "categories": [r],
-                    "description": desc,
-                    "effects": effects,
-                    "perks": {},
-                })
-    return items
+# make_items() removido - agora usa build_items() do shop_seed.py
 
 
 async def initialize_shop():
@@ -2745,13 +2721,13 @@ class EquipBody(BaseModel):
 
 async def _get_items():
     try:
-        items = await db.shop_find_all()
+        items = await db.shop_items.find({}, {"_id": 0}).to_list(1000)
         if items:
             return items
     except Exception:
         pass
-    # fallback: se não tiver DB, use seed em memória
-    return make_items()
+    # fallback: se não tiver DB, use seed em memória do shop_seed.py
+    return build_items()
 
 @api_router.post("/admin/seed-shop")
 async def route_seed_shop():
@@ -2765,112 +2741,8 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 
-# --------- gerador idêntico ao do shop_seed.js ---------
-from math import pow
-
-RARITIES = [("common", 12), ("rare", 9), ("epic", 6), ("legendary", 3)]
-ICONS = ["dot","bolt","star","diamond","target","flame","leaf","heart","clover","triangle"]
-
-def hsl_to_hex(h, s=70, l=50):
-    h = (h % 360 + 360) % 360
-    s /= 100; l /= 100
-    c = (1 - abs(2*l - 1)) * s
-    x = c * (1 - abs((h/60) % 2 - 1))
-    m = l - c/2
-    if   h < 60:  r,g,b = c,x,0
-    elif h < 120: r,g,b = x,c,0
-    elif h < 180: r,g,b = 0,c,x
-    elif h < 240: r,g,b = 0,x,c
-    elif h < 300: r,g,b = x,0,c
-    else:         r,g,b = c,0,x
-    r = round((r+m)*255); g = round((g+m)*255); b = round((b+m)*255)
-    return f"#{(1<<24 | r<<16 | g<<8 | b):06x}"[1:]
-
-def price_curve_simple(i, total):
-    if total <= 1: return 50
-    t = i / (total - 1)
-    curved = pow(t, 2.2)
-    return round(50 + 5750 * curved)
-
-def split_bands(total):
-    bands = []
-    acc = 0
-    for key, cnt in RARITIES:
-        bands.append({"key": key, "start": acc, "end": acc + cnt - 1})
-        acc += cnt
-    return bands
-
-def build_seals():
-    total = 30
-    bands = split_bands(total)
-    out = []
-    for i in range(total):
-        band = next(b for b in bands if b["start"] <= i <= b["end"])
-        rarity = band["key"]
-        hue = (i * 13 + 210) % 360
-        base = hsl_to_hex(hue, 72, 56)
-        angle = (i * 17) % 360
-        icon  = ICONS[i % len(ICONS)]
-        avatar_style = {
-            "icon": icon, "static_color": base, "angle": angle,
-            "orbit": "fast" if rarity in ("epic","legendary") else "slow" if rarity=="rare" else "none",
-            "particles": "stardust" if rarity in ("epic","legendary") else "sparks" if rarity=="rare" else "none",
-            "trail": rarity in ("epic","legendary"),
-            "pulse": rarity in ("epic","legendary"),
-            "pattern": "rings" if rarity=="legendary" else "none",
-        }
-        out.append({
-            "id": f"seal_{i+1}", "name": f"Selo {i+1}",
-            "item_type": "seal", "rarity": rarity,
-            "price": price_curve_simple(i, total),
-            "level_required": 1 + i//3,
-            "effects": {"avatar_style": avatar_style}
-        })
-    return out
-
-def build_borders():
-    total = 30
-    bands = split_bands(total)
-    out = []
-    for i in range(total):
-        band = next(b for b in bands if b["start"] <= i <= b["end"])
-        rarity = band["key"]
-        thickness = 2 if rarity in ("common","rare") else 3 if rarity=="epic" else 4
-        animated = "" if rarity=="common" else "rainbow"
-        out.append({
-            "id": f"border_{i+1}", "name": f"Borda {i+1}",
-            "item_type": "border", "rarity": rarity,
-            "price": price_curve_simple(i, total),
-            "level_required": 1 + i//3,
-            "effects": { "thickness": thickness, "animated": animated, "accent_color_sync": rarity != "common" }
-        })
-    return out
-
-def build_themes():
-    total = 30
-    bands = split_bands(total)
-    out = []
-    for i in range(total):
-        band = next(b for b in bands if b["start"] <= i <= b["end"])
-        rarity = band["key"]
-        h = (i * 11 + 30) % 360
-        accent  = hsl_to_hex(h, 80, 55)
-        surface = hsl_to_hex((h + 320) % 360, 28, 13)
-        out.append({
-            "id": f"theme_{i+1}", "name": f"Tema {i+1}",
-            "item_type": "theme", "rarity": rarity,
-            "price": price_curve_simple(i, total),
-            "level_required": 1 + i//3,
-            "effects": {
-                "palette": [accent, surface],
-                "bg": "parallax" if rarity=="legendary" else "cycle-reactive" if rarity=="epic" else "solid",
-                "celebrate_milestones": rarity=="legendary"
-            }
-        })
-    return out
-
-def get_shop_items():
-    return build_seals() + build_borders() + build_themes()
+# --------- NOTA: Geradores de itens agora usam shop_seed.py com build_items() ---------
+# As funções inline foram removidas em favor das versões avançadas do shop_seed.py
 # ---------------------------------------------------------
 
 @api_router.get("/shop/list")
@@ -2887,20 +2759,45 @@ async def shop_list():
     return {"items": items}
 
 @api_router.post("/shop/equip")
-async def route_shop_equip(body: EquipBody, request: Request):
+async def route_shop_equip(body: EquipBody, request: Request, session_token: Optional[str] = Cookie(None)):
+    user = await get_current_user(request, session_token)
+    
     # tenta achar o item
     items = await _get_items()
     item = next((x for x in items if x["id"] == body.item_id), None)
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
 
-    # user_id simples (usa Authorization: Bearer <id> se existir)
-    user_id = request.headers.get("Authorization", "").replace("Bearer ", "") or "local-user"
-    try:
-        u = await db.user_set_equipped(user_id, item)
-        return {"ok": True, "equipped_items": u["equipped_items"]}
-    except Exception:
-        return {"ok": True}
+    # verifica se o usuário possui o item
+    items_owned = user.items_owned or []
+    if body.item_id not in items_owned:
+        raise HTTPException(status_code=400, detail="Você não possui este item")
+    
+    item_type = item["item_type"]
+    
+    # atualiza no banco
+    await db.users.update_one(
+        {"id": user.id},
+        {"$set": {f"equipped_items.{item_type}": body.item_id}}
+    )
+    
+    return {"ok": True, "item_type": item_type, "item_id": body.item_id}
+
+@api_router.post("/shop/unequip")
+async def route_shop_unequip(body: dict, request: Request, session_token: Optional[str] = Cookie(None)):
+    user = await get_current_user(request, session_token)
+    
+    item_type = body.get("item_type")
+    if not item_type or item_type not in ["seal", "border", "theme"]:
+        raise HTTPException(status_code=400, detail="Invalid item_type")
+    
+    # atualiza no banco
+    await db.users.update_one(
+        {"id": user.id},
+        {"$set": {f"equipped_items.{item_type}": None}}
+    )
+    
+    return {"ok": True, "item_type": item_type}
     
 
 app.include_router(api_router, prefix="/api")
@@ -3096,7 +2993,7 @@ async def calendar_create(ev: CalendarEventCreate, request: Request, session_tok
     return doc
 
 @api_router.get("/calendar/day")
-async def calendar_day(date_iso: str, request: Request, session_token: Optional[str] = Cookie(None)):
+async def calendar_day(payload: dict, user = Depends(require_user)):
     """
     Retorna eventos do dia (UTC) informado (YYYY-MM-DD).
     """
@@ -3118,7 +3015,7 @@ async def calendar_day(date_iso: str, request: Request, session_token: Optional[
         },
         {"_id": 0}
     ).sort("start", 1).to_list(500)
-    return items
+    return {"ok": True}
 
 @api_router.patch("/calendar/event/{event_id}")
 async def calendar_update(event_id: str, payload: CalendarEventUpdate, request: Request, session_token: Optional[str] = Cookie(None)):
