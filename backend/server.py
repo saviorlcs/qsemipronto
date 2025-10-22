@@ -1865,11 +1865,11 @@ async def groups_member_kick(group_id: str, user_id: str = Body(...), request: R
 
 @api_router.post("/presence/ping")
 async def presence_ping(payload: dict, user = Depends(require_user)):
-    me = await get_current_user(request, session_token)
+    me = user  # user já foi retornado pelo Depends(require_user)
     doc = await db.users.find_one({"id": me.id}, {"_id": 0}) or {"id": me.id}
     now = utcnow()
     updates = {"last_activity": now}
-    if body.interaction:
+    if payload.get("interaction"):
         updates["last_interaction"] = now
     await db.users.update_one({"id": me.id}, {"$set": updates}, upsert=True)
     merged = {**doc, **updates}
@@ -2009,7 +2009,7 @@ async def friends_list(request: Request, session_token: Optional[str] = Cookie(N
 
 @api_router.post("/presence/leave")
 async def presence_leave(payload: dict, user = Depends(require_user)):
-    me = await get_current_user(request, session_token)
+    me = user  # user já foi retornado pelo Depends(require_user)
     doc = await db.users.find_one({"id": me.id}, {"_id": 0}) or {"id": me.id}
     tabs = max(0, int(doc.get("tabs_open") or 0) - 1)
     updates = {"tabs_open": tabs, "last_activity": utcnow()}
