@@ -44,11 +44,20 @@ async function ensureAuthIdentity() {
   try {
     const r = await api.get("/auth/me").catch(() => ({ data: null }));
     const u = r?.data?.user ?? r?.data ?? null;
-    if (u?.token) api.defaults.headers.common["Authorization"] = `Bearer ${u.token}`;
-else delete api.defaults.headers.common["Authorization"];
+    
+    if (u?.token) {
+      api.defaults.headers.common["Authorization"] = `Bearer ${u.token}`;
+    } else {
+      delete api.defaults.headers.common["Authorization"];
+    }
 
-// ✅ persista a identidade (id/token) para os interceptors usarem
-if (u?.id) Auth.setUser(u); else Auth.clear();
+    // ✅ persista a identidade (id/token) para os interceptors usarem
+    if (u?.id) {
+      Auth.setUser(u);
+    } else {
+      Auth.clear();
+    }
+    
     if (r?.data?.id) localStorage.setItem(LS_UID, r.data.id);
     if (r?.data?.token) localStorage.setItem(LS_TOKEN, r.data.token);
     return { token: r?.data?.token || null, uid: r?.data?.id || null };

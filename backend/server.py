@@ -641,17 +641,7 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
     resp = RedirectResponse(FRONTEND_URL, status_code=302)
     make_cookie(resp, token)
-    # === CSRF: cookie não-HttpOnly para o front ler e mandar no header ===
-    csrf = secrets.token_urlsafe(32)
-    response.set_cookie(
-    key="session_token",
-    value=jwt_token,
-    httponly=True,
-    samesite="lax",   # em HTTP no localhost, use Lax
-    secure=False,     # False no dev http
-    path="/",
-)
-
+    
     # limpa state
     resp.delete_cookie("oauth_state", path="/")
     return resp

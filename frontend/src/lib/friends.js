@@ -19,14 +19,10 @@ export const rejectFriendRequest = (requestId) =>
 export const getFriendsPresence = () =>
   api.get("/friends/list").then(r => r.data);
 
-e// src/lib/friends.js (exemplo)
-import { api } from "@/lib/api";
-
+// --- Presença ---
 export const presenceOpen  = () => api.post("/presence/open",  {}, { withCredentials: true });
 export const presencePing  = (active=false) => api.post("/presence/ping",  { active }, { withCredentials: true });
 export const presenceLeave = () => api.post("/presence/leave", {}, { withCredentials: true });
-
-  api.post("/presence/ping", { interaction }).catch(() => {});
 
 // Timer do usuário atual (para o backend saber seu estado)
 export const setTimerState = (state, seconds_left = null) =>
