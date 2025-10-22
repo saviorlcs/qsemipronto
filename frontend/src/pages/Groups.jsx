@@ -34,14 +34,7 @@ export default function Groups() {
   };
   
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await api.get("/auth/me");
-        if (r?.data?.id) localStorage.setItem("backend_user_id", r.data.id);
-        if (r?.data?.token) localStorage.setItem("backend_token", r.data.token);
-      } catch {}
-      refresh();
-    })();
+    refresh();
   }, []);
 
   const onCreate = async () => {

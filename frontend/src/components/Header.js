@@ -33,10 +33,12 @@ useEffect(() => {
   (async () => {
     try {
       const r = await api.get("/auth/me");
-      setUser(r.data || null);
-      // 👉 salva credenciais p/ os interceptors usarem
-      if (r?.data?.id)   localStorage.setItem("backend_user_id", r.data.id);
-      if (r?.data?.token) localStorage.setItem("backend_token", r.data.token);
+      // Backend retorna {ok: true, user: {...}} ou {ok: false, anon: true}
+      if (r.data?.ok && r.data?.user) {
+        setUser(r.data.user);
+      } else {
+        setUser(null);
+      }
     } catch {
       setUser(null);
     } finally {
@@ -49,10 +51,6 @@ const handleLogout = async () => {
   try {
     await api.post("/auth/logout");
   } catch {}
-  // limpa headers e credenciais locais
-  delete api.defaults.headers.common["Authorization"];
-  localStorage.removeItem("backend_user_id");
-  localStorage.removeItem("backend_token");
   setUser(null);
   navigate("/");
 };

@@ -267,6 +267,8 @@ from fastapi.responses import JSONResponse
 CSRF_EXEMPT_PATHS = {
     # presença / grupos
     "/api/presence/leave",
+    "/api/presence/open",
+    "/api/presence/ping",
     "/api/groups",
     "/api/groups/join",
     "/api/groups/leave",
@@ -275,6 +277,10 @@ CSRF_EXEMPT_PATHS = {
     "/api/study/start",
     "/api/study/end",
     "/api/study/timer/state",
+    
+    # shop e outras rotas que podem causar problemas
+    "/api/shop/purchase",
+    "/api/shop/equip",
 }
 
 
@@ -2754,13 +2760,6 @@ async def _get_items():
 async def route_seed_shop():
     items = await initialize_shop()
     return {"ok": True, "count": len(items)}
-
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
-)
 
 # --------- NOTA: Geradores de itens agora usam shop_seed.py com build_items() ---------
 # As funções inline foram removidas em favor das versões avançadas do shop_seed.py

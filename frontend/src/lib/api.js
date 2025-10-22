@@ -26,85 +26,56 @@ function pickBackendURL() {
   return base.endsWith("/api") ? base : `${base}/api`;
 }
 
-
 export const api = axios.create({
   baseURL: pickBackendURL(),
-  withCredentials: true,
+  withCredentials: true, // Importante: permite envio de cookies
 });
 
-// ---------- helpers de identidade ----------
-const LS_UID = "backend_user_id";
-const LS_TOKEN = "backend_token";
-
-async function ensureAuthIdentity() {
-  const token = localStorage.getItem(LS_TOKEN);
-  const uid = localStorage.getItem(LS_UID);
-  if (token || uid) return { token, uid };
-
-  try {
-    const r = await api.get("/auth/me").catch(() => ({ data: null }));
-    const u = r?.data?.user ?? r?.data ?? null;
-    
-    if (u?.token) {
-      api.defaults.headers.common["Authorization"] = `Bearer ${u.token}`;
-    } else {
-      delete api.defaults.headers.common["Authorization"];
-    }
-
-    // ✅ persista a identidade (id/token) para os interceptors usarem
-    if (u?.id) {
-      Auth.setUser(u);
-    } else {
-      Auth.clear();
-    }
-    
-    if (r?.data?.id) localStorage.setItem(LS_UID, r.data.id);
-    if (r?.data?.token) localStorage.setItem(LS_TOKEN, r.data.token);
-    return { token: r?.data?.token || null, uid: r?.data?.id || null };
-  } catch {
-    return { token: null, uid: null };
-  }
+// Função auxiliar para obter CSRF token do cookie
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return null;
 }
 
 // ---------- interceptors ----------
-api.interceptors.request.use(async (config) => {
-  const needsAuth =
-    ["post", "put", "patch", "delete"].includes((config.method || "get").toLowerCase()) ||
-    (config.url && (config.url.startsWith("/groups") || config.url.startsWith("/rankings")));
-
-  if (needsAuth) await ensureAuthIdentity();
-
-  const token = localStorage.getItem(LS_TOKEN);
-  const uid = localStorage.getItem(LS_UID);
-
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  else if (uid) config.headers.Authorization = `Bearer ${uid}`;
-
-  if (uid) config.headers["X-User-Id"] = uid;
-  return config;
-});
-
-api.interceptors.response.use(
-  (r) => r,
-  async (err) => {
-    const status = err?.response?.status;
-    if (status === 401 && !err.config.__retried) {
-      err.config.__retried = true;
-      await ensureAuthIdentity();
-      return api.request(err.config);
+// Adiciona o CSRF token automaticamente em requisições que precisam
+api.interceptors.request.use(
+  (config) => {
+    // Para métodos que modificam dados, adiciona o CSRF token
+    if (["post", "put", "patch", "delete"].includes((config.method || "get").toLowerCase())) {
+      const csrfToken = getCookie('csrf_token');
+      if (csrfToken) {
+        config.headers['X-CSRF-Token'] = csrfToken;
+      }
     }
-    return Promise.reject(err);
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
 );
 
+// Trata erros 401 redirecionando para login se necessário
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Se receber 401, o usuário não está autenticado
+      // Você pode redirecionar para a página de login aqui se necessário
+      console.log('Usuário não autenticado');
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth helper simplificado - agora usa cookies, não localStorage
 export const Auth = {
-  setUser(user) {
-    if (!user) return;
-    if (user.id) localStorage.setItem(LS_UID, user.id);
-    if (user.token) localStorage.setItem(LS_TOKEN, user.token);
-  },
+  // O backend gerencia a autenticação via cookies
+  // Não precisamos mais armazenar tokens manualmente
   clear() {
-    localStorage.removeItem(LS_UID);
-    localStorage.removeItem(LS_TOKEN);
+    // Opcional: chamar endpoint de logout para limpar cookies no servidor
+    api.post('/auth/logout').catch(() => {});
   },
 };
