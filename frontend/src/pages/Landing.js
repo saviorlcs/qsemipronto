@@ -18,8 +18,8 @@ export default function Landing() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get("/auth/me"); // chama seu backend
-        if (res.data?.user) {
+        const res = await api.get("/auth/me");
+         if (res.data?.user) {
           navigate("/dashboard");
         } else {
           setIsLoading(false);

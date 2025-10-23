@@ -12,6 +12,7 @@ import Agenda from "./pages/Agenda";
 import Rankings from "./pages/Rankings";
 import Groups from "./pages/Groups";
 import GroupView from "./pages/GroupView";
+import AuthCallback from "./pages/AuthCallback";
 import { Toaster } from "./components/ui/sonner";
 import "@/App.css";
 import { bootApply } from "@/lib/siteStyle";
@@ -68,12 +69,15 @@ function AuthHandler() {
         const hasNick = !!(u?.nickname && u?.tag);
 
         if (path === "/") {
-          if (u?.id) navigate("/dashboard", { replace: true });
+          if (u?.id && hasNick) navigate("/dashboard", { replace: true });
+          else if (u?.id && !hasNick) navigate("/setup", { replace: true });
         } else if (path === "/setup") {
           if (!u?.id) navigate("/", { replace: true });
           if (u?.id && hasNick) navigate("/dashboard", { replace: true });
         } else {
+          // qualquer outra rota
           if (!u?.id) navigate("/", { replace: true });
+          else if (u?.id && !hasNick) navigate("/setup", { replace: true });
         }
       } finally {
         if (alive) setChecking(false);
@@ -133,6 +137,7 @@ export default function App() {
         <HelloProbe /> {/* integra o "helloWorldApi" do primeiro código */}
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/setup" element={<NicknameSetup />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/rankings" element={<Rankings />} />

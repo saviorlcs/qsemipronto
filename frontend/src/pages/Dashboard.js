@@ -393,7 +393,8 @@ useEffect(() => {
       axios.get(`${API}/quests`, { withCredentials: true }),
     ]);
 
-    const u = userRes.data;
+    // Backend retorna {ok: true, user: {...}}
+    const u = userRes.data?.user || userRes.data;
     const subj = subjectsRes.data;
     const st = statsRes.data;
     const set = settingsRes.data;
@@ -1323,9 +1324,9 @@ const weeklyQuests = buildFourQuests();
       <Header user={user} />
 <div className="app-card p-3 mb-4 flex items-center gap-3">
   <SealAvatar
-    seed={user?.equipped_items?.seal || user?.id}
+    user={user}
+    item={user?.equipped_items?.seal}
     size={48}
-    label="Seu selo"
   />
   <div>
     <div className="text-white font-semibold">
@@ -1346,16 +1347,12 @@ const weeklyQuests = buildFourQuests();
               {/* Avatar do usuário (selo equipado) */}
 {(() => {
   // compat: pode ser user.user.equipped_items ou user.equipped_items, dependendo de como você setou o estado
-  const eq = (user?.user?.equipped_items) || (user?.equipped_items) || {};
-  const sealId = eq.seal ?? 'seal_0';
-  const displayName = (user?.user?.nickname && user?.user?.tag)
-    ? `${user.user.nickname}#${user.user.tag}`
-    : (user?.user?.name || user?.name || 'Usuário');
+  const actualUser = user?.user || user;
+  const sealItem = actualUser?.equipped_items?.seal;
 
   return (
     <div className="flex justify-center mb-4">
-      <SealAvatar seed={sealId} size={72} label={displayName} />
-
+      <SealAvatar user={actualUser} item={sealItem} size={72} />
     </div>
   );
 })()}

@@ -21,9 +21,16 @@ function pickBackendURL() {
       ? (window.__BACKEND_URL__ || window.BACKEND_URL)
       : undefined;
 
-  const raw = globalUrl || viteUrl || craUrl || "http://localhost:5000";
+  console.log("[API DEBUG]", { viteUrl, craUrl, globalUrl, processEnv: typeof process !== "undefined" ? process.env : "N/A" });
+  
+  // HOTFIX: Hardcode para emergent preview
+  const raw = "https://c8ccb232-3757-485b-bd11-d45acc71559c.preview.emergentagent.com";
   const base = raw.replace(/\/+$/, "");
-  return base.endsWith("/api") ? base : `${base}/api`;
+  const final = base.endsWith("/api") ? base : `${base}/api`;
+  
+  console.log("[API DEBUG] Final URL (HOTFIX):", final);
+  
+  return final;
 }
 
 export const api = axios.create({

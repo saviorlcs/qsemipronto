@@ -23,13 +23,17 @@ export default function Header({ user: userProp }) {
 
   // ...imports e estado (user, loading) iguais
 
+// Carrega o user se não foi passado como prop
 useEffect(() => {
-  setUser(userProp ?? null);
-  if (userProp === undefined) setLoading(true);
-}, [userProp]);
-
-useEffect(() => {
-  if (userProp !== undefined) return;
+  // Se userProp tem dados válidos, usa ele
+  if (userProp && userProp.id) {
+    setUser(userProp);
+    setLoading(false);
+    return;
+  }
+  
+  // Senão, busca do backend
+  setLoading(true);
   (async () => {
     try {
       const r = await api.get("/auth/me");
@@ -50,9 +54,15 @@ useEffect(() => {
 const handleLogout = async () => {
   try {
     await api.post("/auth/logout");
-  } catch {}
+  } catch (e) {
+    console.error("Erro ao fazer logout:", e);
+  }
+  
+  // Limpa estado local
   setUser(null);
-  navigate("/");
+  
+  // Força reload completo para limpar TUDO
+  window.location.replace("/");
 };
 
 

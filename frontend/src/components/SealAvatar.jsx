@@ -2,6 +2,26 @@
 import React, { useMemo } from "react";
 
 export default function SealAvatar({ user, item, size = 56, className = "", style = {} }) {
+  // Se não tem user ID, retorna placeholder simples
+  if (!user || (!user.id && !user.nickname && !user.name)) {
+    return (
+      <div style={{ 
+        width: size, 
+        height: size, 
+        borderRadius: size, 
+        background: 'linear-gradient(135deg, #334155 0%, #475569 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#94a3b8',
+        fontSize: Math.floor(size * 0.36),
+        fontWeight: 700
+      }}>
+        ?
+      </div>
+    );
+  }
+  
   const handle =
     (user?.nickname ? `${user.nickname}${user?.tag ? "#" + user.tag : ""}` : "") ||
     user?.name || "Aluno";

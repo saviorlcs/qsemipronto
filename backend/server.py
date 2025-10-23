@@ -256,7 +256,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://c8ccb232-3757-485b-bd11-d45acc71559c.preview.emergentagent.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -268,6 +272,8 @@ CSRF_EXEMPT_PATHS = {
     # presença / grupos
     "/api/presence/leave",
     "/api/presence/open",
+    # auth
+    "/api/auth/set-session",  # usado no callback OAuth
     "/api/presence/ping",
     "/api/groups",
     "/api/groups/join",
@@ -472,13 +478,15 @@ def set_session_cookie(resp, token: str):
 
 def make_cookie(response: RedirectResponse | JSONResponse, token: str):
     # Em produção: Secure=True e SameSite=None (cross-site)
+    # Em dev: Secure=False e SameSite=Lax
+    is_production = BACKEND_URL.startswith("https://")
     response.set_cookie(
         "session_token",
         token,
         max_age=60*60*24*30,
         httponly=True,      # melhor segurança; o axios envia o cookie via withCredentials
-        secure=False,       # em dev (HTTP). Em produção: True + SameSite=None
-        samesite="Lax",     # ok para top-level redirect do Google
+        secure=is_production,       # True em HTTPS, False em HTTP
+        samesite="None" if is_production else "Lax",     # None em produção para cross-site
         path="/",           # sem 'domain' no localhost
     )
 from datetime import datetime, timezone
@@ -675,11 +683,14 @@ async def google_callback(request: Request, code: str | None = None, state: str 
     # JWT e cookie
     payload = {"sub": uid, "exp": datetime.now(timezone.utc) + timedelta(days=30)}
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-    resp = RedirectResponse(f"{FRONTEND_URL}/dashboard", status_code=302)
+    
+    # Redireciona para página intermediária que aguarda o cookie ser setado
+    resp = RedirectResponse(f"{FRONTEND_URL}/auth/callback", status_code=302)
     make_cookie(resp, token)
     
     # limpa state cookie
     resp.delete_cookie("oauth_state", path="/")
+    
     return resp
 
 @api_router.post("/admin/seed-shop")
@@ -749,14 +760,47 @@ async def auth_me(request: Request, session_token: Optional[str] = Cookie(None),
 
 
 
+@api_router.post("/auth/set-session")
+async def set_session(request: Request):
+    """
+    Endpoint para setar o cookie de sessão após OAuth.
+    Recebe o token no body e seta como cookie.
+    """
+    body = await request.json()
+    token = body.get("token")
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="Token missing")
+    
+    # Valida o token
+    try:
+        data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        uid = data.get("sub")
+        if not uid:
+            raise HTTPException(status_code=400, detail="Invalid token")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid token")
+    
+    # Verifica se o usuário existe
+    user = await db.users.find_one({"id": uid}, {"_id": 0, "id": 1})
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+    
+    # Cria response e seta cookie
+    resp = JSONResponse({"ok": True, "user_id": uid})
+    make_cookie(resp, token)
+    
+    return resp
+
 @api_router.post("/auth/logout")
 async def logout(request: Request, session_token: Optional[str] = Cookie(None)):
     if session_token:
         await db.sessions.delete_one({"id": session_token})
     resp = JSONResponse({"ok": True})
-    # apaga cookies
-    resp.delete_cookie("session_token", path="/")
-    resp.delete_cookie("csrf_token", path="/")
+    # apaga cookies com os mesmos parâmetros usados ao criar
+    is_production = BACKEND_URL.startswith("https://")
+    resp.delete_cookie("session_token", path="/", httponly=True, secure=is_production, samesite="None" if is_production else "lax")
+    resp.delete_cookie("csrf_token", path="/", httponly=True, secure=is_production, samesite="None" if is_production else "lax")
     return resp
 
 from fastapi import Depends, Request, Cookie, Header, HTTPException
@@ -1464,8 +1508,8 @@ async def groups_presence(group_id: str, request: Request):
 def blocks_pipeline(match_extra):
     return [
         {"$match": {"completed": True, **match_extra}},
-        {"$project": {"user_id":1, "minutes": {"$ifNull":["$minutes",50]}}},
-        {"$group": {"_id":"$user_id", "minutes": {"$sum":"$minutes"}}},
+        {"$project": {"user_id":1, "duration": {"$ifNull":["$duration",0]}}},
+        {"$group": {"_id":"$user_id", "minutes": {"$sum":"$duration"}}},
         {"$project": {"_id":0, "user_id":"$_id", "minutes":1, "blocks":{"$floor":{"$divide":["$minutes",50]}}}},
         {"$match": {"blocks": {"$gt": 0}}},
         {"$sort": {"blocks": -1, "minutes": -1}},
@@ -1475,10 +1519,13 @@ def blocks_pipeline(match_extra):
 @api_router.get("/rankings/global", tags=["rankings"])
 async def rk_global(period: str = "week"):
     start, end = period_bounds(period)
-    cur = sessions_col.aggregate(blocks_pipeline({"started_at":{"$gte": start, "$lte": end}}))
+    # Converte para ISO string para comparação com start_time (armazenado como string)
+    start_iso = start.isoformat()
+    end_iso = end.isoformat()
+    cur = sessions_col.aggregate(blocks_pipeline({"start_time":{"$gte": start_iso, "$lte": end_iso}}))
     out = []
     async for r in cur:
-        u = await users_col.find_one({"id": r["user_id"]}, {"name":1,"nickname":1,"tag":1})
+        u = await users_col.find_one({"id": r["user_id"]}, {"name":1,"nickname":1,"tag":1, "_id":0})
         handle = f'{u["nickname"]}#{u["tag"]}' if u and u.get("nickname") and u.get("tag") else ""
         out.append({"id": r["user_id"], "handle": handle, "name": (u or {}).get("name",""),
                     "blocks": int(r["blocks"]), "minutes": int(r["minutes"])})
@@ -1488,17 +1535,19 @@ async def rk_global(period: str = "week"):
 async def rk_friends(period: str = "week", request: Request = None):
     uid = current_user_id(request)
     start, end = period_bounds(period)
+    start_iso = start.isoformat()
+    end_iso = end.isoformat()
     friends_col = db["friendships"]
     friends = set()
     async for fr in friends_col.find({"$or":[{"a": uid},{"b": uid}], "status":"accepted"}):
         other = fr["b"] if fr["a"] == uid else fr["a"]
         friends.add(other)
     if not friends: return []
-    cur = sessions_col.aggregate(blocks_pipeline({"started_at":{"$gte": start, "$lte": end},
+    cur = sessions_col.aggregate(blocks_pipeline({"start_time":{"$gte": start_iso, "$lte": end_iso},
                                                   "user_id": {"$in": list(friends)}}))
     out = []
     async for r in cur:
-        u = await users_col.find_one({"id": r["user_id"]}, {"name":1,"nickname":1,"tag":1})
+        u = await users_col.find_one({"id": r["user_id"]}, {"name":1,"nickname":1,"tag":1, "_id":0})
         handle = f'{u["nickname"]}#{u["tag"]}' if u and u.get("nickname") and u.get("tag") else ""
         out.append({"id": r["user_id"], "handle": handle, "name": (u or {}).get("name",""),
                     "blocks": int(r["blocks"]), "minutes": int(r["minutes"])})
@@ -1507,13 +1556,21 @@ async def rk_friends(period: str = "week", request: Request = None):
 @api_router.get("/rankings/groups", tags=["rankings"])
 async def rk_groups(period: str = "week"):
     start, end = period_bounds(period)
-    tmp = [r async for r in sessions_col.aggregate(blocks_pipeline({"started_at":{"$gte": start, "$lte": end}}))]
+    start_iso = start.isoformat()
+    end_iso = end.isoformat()
+    tmp = [r async for r in sessions_col.aggregate(blocks_pipeline({"start_time":{"$gte": start_iso, "$lte": end_iso}}))]
     if not tmp: return []
     agg = {}
     for r in tmp:
         async for gm in group_members_col.find({"user_id": r["user_id"]}, {"group_id":1, "_id":0}):
             gid = gm["group_id"]
-            g = await groups_col.find_one({"_id": ObjectId(gid)}, {"name":1})
+            # Tenta por "id" string primeiro, depois por ObjectId
+            g = await groups_col.find_one({"id": gid}, {"name":1, "_id":0})
+            if not g:
+                try:
+                    g = await groups_col.find_one({"_id": ObjectId(gid)}, {"name":1, "_id":0})
+                except:
+                    pass
             if not g: continue
             key = gid
             if key not in agg: agg[key] = {"group_id": gid, "group_name": g["name"], "minutes":0, "blocks":0}
@@ -1524,108 +1581,18 @@ async def rk_groups(period: str = "week"):
 @api_router.get("/rankings/groups/{group_id}", tags=["rankings"])
 async def rk_inside_group(group_id: str, period: str = "week"):
     start, end = period_bounds(period)
+    start_iso = start.isoformat()
+    end_iso = end.isoformat()
     uids = [m["user_id"] async for m in group_members_col.find({"group_id": group_id}, {"user_id":1,"_id":0})]
     if not uids: return []
-    cur = sessions_col.aggregate(blocks_pipeline({"started_at":{"$gte": start, "$lte": end}, "user_id":{"$in": uids}}))
+    cur = sessions_col.aggregate(blocks_pipeline({"start_time":{"$gte": start_iso, "$lte": end_iso}, "user_id":{"$in": uids}}))
     out = []
     async for r in cur:
-        u = await users_col.find_one({"id": r["user_id"]}, {"name":1,"nickname":1,"tag":1})
+        u = await users_col.find_one({"id": r["user_id"]}, {"name":1,"nickname":1,"tag":1, "_id":0})
         handle = f'{u["nickname"]}#{u["tag"]}' if u and u.get("nickname") and u.get("tag") else ""
         out.append({"id": r["user_id"], "handle": handle, "name": (u or {}).get("name",""),
                     "blocks": int(r["blocks"]), "minutes": int(r["minutes"])})
     return out
-
-
-@api_router.get("/rankings/global", tags=["rankings"])
-async def ranking_global(period: str = "week"):
-    start, end = period_bounds(period)
-    pipeline = blocks_pipeline({"started_at": {"$gte": start, "$lte": end}})
-    cur = sessions_col.aggregate(pipeline)
-    out = []
-    async for r in cur:
-        out.append({
-            "id": r["user_id"],
-            "handle": "",   # backend pode preencher se você tiver a tabela de users
-            "name": "",
-            "blocks": int(r["blocks"]),
-            "minutes": int(r["minutes"]),
-        })
-    return out
-
-@api_router.get("/rankings/friends", tags=["rankings"])
-async def ranking_friends(period: str = "week", request: Request = None):
-    uid = current_user_id(request)
-    start, end = period_bounds(period)
-    # colete seus amigos (recíprocos) – ajuste pro seu schema:
-    friends_col = db["friendships"]
-    friends = set()
-    async for fr in friends_col.find({"$or":[{"a": uid},{"b": uid}], "status":"accepted"}):
-        other = fr["b"] if fr["a"] == uid else fr["a"]
-        friends.add(other)
-    if not friends:
-        return []
-
-    pipeline = blocks_pipeline({"started_at": {"$gte": start, "$lte": end}, "user_id": {"$in": list(friends)}})
-    cur = sessions_col.aggregate(pipeline)
-    out = []
-    async for r in cur:
-        out.append({
-            "id": r["user_id"],
-            "handle": "",
-            "name": "",
-            "blocks": int(r["blocks"]),
-            "minutes": int(r["minutes"]),
-        })
-    return out
-
-@api_router.get("/rankings/groups", tags=["rankings"])
-async def ranking_groups(period: str = "week"):
-    start, end = period_bounds(period)
-
-    # minutos por user no período
-    pipeline = blocks_pipeline({"started_at": {"$gte": start, "$lte": end}})
-    tmp = []
-    async for r in sessions_col.aggregate(pipeline):
-        tmp.append(r)  # r: {user_id, minutes, blocks}
-
-    if not tmp:
-        return []
-
-    # mapeia user -> grupos
-    res = []
-    for r in tmp:
-        cursor = group_members_col.find({"user_id": r["user_id"]}, {"group_id":1, "_id":0})
-        async for gm in cursor:
-            g = await groups_col.find_one({"_id": ObjectId(gm["group_id"])}, {"name":1})
-            if not g: continue
-            res.append({"group_id": gm["group_id"], "group_name": g["name"], "minutes": r["minutes"], "blocks": r["blocks"]})
-
-    # agrega por grupo
-    agg = {}
-    for row in res:
-        k = row["group_id"]
-        agg.setdefault(k, {"group_id": k, "group_name": row["group_name"], "minutes":0, "blocks":0})
-        agg[k]["minutes"] += row["minutes"]
-        agg[k]["blocks"] += row["blocks"]
-
-    ranked = sorted(agg.values(), key=lambda x: (-x["blocks"], -x["minutes"]))[:100]
-    return ranked
-
-@api_router.get("/rankings/groups/{group_id}", tags=["rankings"])
-async def ranking_inside_group(group_id: str, period: str = "week"):
-    start, end = period_bounds(period)
-    # membros
-    uids = [m["user_id"] async for m in group_members_col.find({"group_id": group_id}, {"user_id":1, "_id":0})]
-    if not uids:
-        return []
-    pipeline = blocks_pipeline({"started_at":{"$gte":start,"$lte":end}, "user_id":{"$in":uids}})
-    out = []
-    async for r in sessions_col.aggregate(pipeline):
-        out.append({
-            "id": r["user_id"], "blocks": int(r["blocks"]), "minutes": int(r["minutes"])
-        })
-    return out
-
 
 
 def _now_utc():
